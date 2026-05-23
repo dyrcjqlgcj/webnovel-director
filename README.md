@@ -78,10 +78,10 @@ python scripts/build_task_package.py ./我的小说 --chapter 1
 
 | 问题 | 答案 |
 |------|------|
-| 需要额外安装 skill 吗？ | **不需要。** 五个子系统已内嵌在 `subsystems/` 目录中 |
+| 需要额外安装 skill 吗？ | **不需要。** 五个子系统已内嵌，即装即用 |
 | 支持什么平台？ | 默认番茄。起点/晋江可通过 scanner 配置 |
 | 能自动日更吗？ | 能。配置 cron + `references/cron-interface.md` |
-| 依赖 inkos 吗？ | 不依赖。writer 子系统是内置的；inkos 是可选替代执行器 |
+| 写作如何执行？ | 内置 writer 子系统，含完整方法论、钩子库、禁用词表 |
 
 ---
 

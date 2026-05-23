@@ -18,7 +18,7 @@ description: |
 2. **长篇必须有唯一真相源**：`director/premise.md` + `director/director_state.json5|yaml`。
 3. **卷纲/细纲强拦截**：偏离命题或触犯禁飞区，不进入正文。
 4. **正文分级审查**：Level 1 每章，Level 2 每10章，Level 3 每30章/卷末/连续 WARN/FAIL。
-5. **执行器可替换**：默认使用内置 writer 子系统；可替换为 inkos 或其他执行器。
+5. **执行器自包含**：writer 子系统内置完整写作方法论，即装即用。
 
 ## 五个子系统
 
@@ -93,7 +93,6 @@ description: |
 | `scripts/concept_gate.py` | 六维概念验证打分 | 否 |
 | `scripts/init_project.py` | 初始化 director/truth 骨架 | 否 |
 | `scripts/director_doctor.py` | 一键体检项目状态/队列/闸门 | 否 |
-| `scripts/sync_inkos_state.py` | 从 inkos 项目同步状态到 director/truth | 否 |
 | `scripts/extract_premise.py` | 从 story 文件自动生成 premise 初稿 | 否 |
 | `scripts/outline_gate_review.py` | 逐章六维审查报告 | 否 |
 | `scripts/outline_causal_check.py` | 大纲逻辑验证：因果链/爽点密度/角色弧线/力量曲线 | 否 |
@@ -112,18 +111,16 @@ description: |
 - `references/architecture.md`：总架构
 - `references/module-protocol.md`：模块协议
 - `references/integration-subsystems.md`：五个子系统集成
-- `references/integration-inkos.md`：inkos 集成
 - `references/cron-interface.md`：cron 接口
 - `references/state-files.md`：director/truth 文件定义
 - `references/operations.md`：操作手册
 - `references/roadmap.md`：路线图
-- `references/sync-inkos-state.md`：inkos 同步
 - `references/post-writeback.md`：写后回写
 
 标准顺序：
 
 ```text
-init_project / sync_inkos_state / extract_premise
+init_project / extract_premise
 ↓
 director_doctor
 ↓
