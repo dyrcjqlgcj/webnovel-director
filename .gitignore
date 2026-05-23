@@ -1,0 +1,8 @@
+﻿# webnovel-director .gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.bak.*
+*.orig
+*.tmp
+.DS_Store

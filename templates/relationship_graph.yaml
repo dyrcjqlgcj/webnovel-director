@@ -1,0 +1,58 @@
+﻿# truth/relationship_graph.yaml
+#
+# 记录人物、资源、事件、钩子之间的因果边。
+# consistency-module 用此图检查关系链是否断裂。
+#
+# 字段：
+#   source / target : 实体标识（人物.物品 / 地点.层级 / 钩子.id ...）
+#   relation        : 关系描述
+#   active_from     : 起始章号
+#   active_until    : 终止章号（null=持续有效）
+#   evidence        : 正文/线索来源
+#
+# 填写示例见注释行（以 # 开头）。
+
+edges:
+  - source: "{{PROTAGONIST}}"
+    target: "{{CORE_MECHANISM}}"
+    relation: "发现并利用"
+    active_from: 1
+    active_until: null
+    evidence: "{{EVIDENCE_1}}"
+
+  - source: "{{PROTAGONIST}}"
+    target: "{{ANTAGONIST_FORCE}}"
+    relation: "被追踪/限制"
+    active_from: 1
+    active_until: null
+    evidence: "{{EVIDENCE_2}}"
+
+# --- 填写示例 ---
+# edges:
+#   - source: "主角.核心物品"
+#     target: "地点.关键设施"
+#     relation: "同步/感应"
+#     active_from: 30
+#     active_until: null
+#     evidence: "Ch30 首次发现脉冲同步"
+#
+#   - source: "主角.标记"
+#     target: "敌对势力.监控系统"
+#     relation: "被追踪"
+#     active_from: 30
+#     active_until: null
+#     evidence: "Ch30 被识别为异常变量"
+#
+#   - source: "外部资源"
+#     target: "主角.核心物品"
+#     relation: "待连接（需要连接器）"
+#     active_from: 30
+#     active_until: null
+#     evidence: "Ch30 外部情报"
+#
+#   - source: "配角.能力"
+#     target: "世界规则"
+#     relation: "解析/理解"
+#     active_from: 28
+#     active_until: null
+#     evidence: "Ch28 首次破译"

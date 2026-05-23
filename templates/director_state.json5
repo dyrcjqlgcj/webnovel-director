@@ -1,0 +1,15 @@
+﻿{
+  bookId: "{{BOOK_ID}}",
+  title: "{{TITLE}}",
+  status: "drafting",
+  activeVolume: 1,
+  currentChapter: 0,
+  premiseFile: "director/premise.md",
+  lastAudit: "director/last_audit.md",
+  chapterQueue: "director/chapter_queue.md",
+  executor: "inkos",
+  canWrite: false,
+  blockers: ["outline-gate 未通过"],
+  lastAuditStatus: "NONE",
+  updatedAt: "{{UPDATED_AT}}"
+}
