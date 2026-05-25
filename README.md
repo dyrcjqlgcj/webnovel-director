@@ -106,11 +106,11 @@ webnovel-director/
 │   └── repair-feedback/        # 修复+回写
 │
 ├── subsystems/                 # 5 个自包含子系统（无需外部 skill）
-│   ├── scanner/                # 市场雷达：modules\chapter-review\guide.md + 5 个 reference 文件
-│   ├── analyzer/               # 拆文引擎：modules\chapter-review\guide.md + 5 个 reference 文件
-│   ├── writer/                 # 正文执行器：modules\chapter-review\guide.md + 18 个 reference 文件
-│   ├── reviewer/               # 深度审查：modules\chapter-review\guide.md + rubric 文件
-│   └── polisher/               # 去AI味：modules\chapter-review\guide.md + 共享 craft 引用
+│   ├── scanner/                # 市场雷达：subsystems/scanner/guide.md + 5 个 reference 文件
+│   ├── analyzer/               # 拆文引擎：subsystems/analyzer/guide.md + 5 个 reference 文件
+│   ├── writer/                 # 正文执行器：subsystems/writer/guide.md + 18 个 reference 文件
+│   ├── reviewer/               # 深度审查：subsystems/reviewer/guide.md + rubric 文件
+│   └── polisher/               # 去AI味：subsystems/polisher/guide.md + 共享 craft 引用
 │
 ├── scripts/                    # 15+ 个可执行脚本
 │   ├── concept_gate.py         # 概念验证
