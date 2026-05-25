@@ -14,10 +14,10 @@
 │   ├── last_audit.md
 │   └── audit_log.md
 ├── truth/
-│   ├── templates\current_state.md
-│   ├── templates\resource_ledger.md
-│   ├── templates\particle_ledger.md
-│   └── templates\pending_hooks.md
+│   ├── current_state.md
+│   ├── resource_ledger.md
+│   ├── particle_ledger.md
+│   └── pending_hooks.md
 ```
 
 ## premise.md
@@ -54,11 +54,11 @@
 ## truth files
 
 兼容 inkos：
-- `templates\current_state.md`
-- `templates\particle_ledger.md`
-- `templates\pending_hooks.md`
+- `truth\current_state.md`
+- `truth\particle_ledger.md`
+- `truth\pending_hooks.md`
 
-也可增加更通用的 `templates\resource_ledger.md`，但必须声明与 inkos 文件的同步关系。
+也可增加更通用的 `truth\resource_ledger.md`，但必须声明与 inkos 文件的同步关系。
 
 ## 与 inkos 项目的同步
 
