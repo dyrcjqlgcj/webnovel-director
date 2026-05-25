@@ -1,94 +1,83 @@
 # webnovel-director Coworker Automation
-# 自动领 GitHub Issue → Claude Code 修 → 提 PR
+# Auto-pick GitHub Issues -> Claude Code fix -> PR
 param(
-    [string]$Label = "",           # 按标签过滤（空=不过滤）
-    [int]$Limit = 1,               # 每次最多处理几个 Issue
-    [switch]$DryRun                # 只看不执行
+    [switch]$DryRun
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $RepoDir = "C:\Users\ThinkPad\webnovel-director"
 Set-Location $RepoDir
+$env:GH_PAGER = ""
 
-# 确保在 master 且干净
 git checkout master 2>&1 | Out-Null
 git pull origin master 2>&1 | Out-Null
 
-# 获取 Issue 列表
-$labelFilter = if ($Label) { "--label `"$Label`"" } else { "" }
-$issuesJson = Invoke-Expression "gh issue list --limit $Limit --state open --json number,title,body,labels $labelFilter" | ConvertFrom-Json
-
-if (-not $issuesJson -or $issuesJson.Count -eq 0) {
-    Write-Host "[coworker] No open issues found." 
+# Get first open issue number (simple output, no JSON parsing)
+$issueNum = gh issue list --limit 1 --state open --json number --jq ".[0].number" 2>$null
+if (-not $issueNum) {
+    Write-Host "[coworker] No open issues."
     exit 0
 }
 
-foreach ($issue in $issuesJson) {
-    $num = $issue.number
-    $title = $issue.title
-    $body = $issue.body
-    $branch = "fix/issue-$num"
+# Get issue details individually
+$title = gh issue view $issueNum --json title --jq ".title" 2>$null
+$branch = "fix/issue-$issueNum"
 
-    Write-Host "[coworker] Processing #$num: $title"
+Write-Host "[coworker] Issue #${issueNum} - ${title}"
 
-    # 跳过已有 PR 的
-    $prCheck = gh pr list --head $branch --state open --json number 2>$null | ConvertFrom-Json
-    if ($prCheck -and $prCheck.Count -gt 0) {
-        Write-Host "  → Skipped: PR already exists for branch $branch"
-        continue
-    }
-
-    # 跳过已有分支的（可能在处理中）
-    $branchExists = git ls-remote --heads origin $branch 2>$null
-    if ($branchExists) {
-        Write-Host "  → Skipped: remote branch $branch already exists"
-        continue
-    }
-
-    if ($DryRun) {
-        Write-Host "  [DRY RUN] Would create branch, fix with Claude Code, and open PR"
-        continue
-    }
-
-    # 创建修复分支
-    git checkout -b $branch 2>&1 | Out-Null
-
-    # 构造 Claude Code coworker prompt
-    $claudePrompt = @"
-You are a coding coworker on the webnovel-director project. Fix this GitHub issue.
-
-<issue>
-Number: #$num
-Title: $title
-Body: $body
-</issue>
-
-<instructions>
-1. Understand the issue and what needs to change
-2. Read relevant files in the project to understand the current code
-3. Make the necessary changes
-4. Run any available tests (scripts/test_smoke.py) to verify
-5. If tests pass: commit all changes with message "fix: #$num - $title"
-6. Push to origin/$branch
-7. Create a PR using: gh pr create --title "fix: #$num - $title" --body "Closes #$num`n`n$body" --base master
-
-IMPORTANT: Do NOT modify files unrelated to this issue.
-Do NOT refactor code that isn't broken.
-Keep changes minimal and focused.
-</instructions>
-"@
-
-    Write-Host "  → Spawning Claude Code..."
-    
-    # 临时写入 prompt 文件（避免 PowerShell 中文 JSON 编码问题）
-    $promptFile = "$env:TEMP\claude-coworker-prompt.txt"
-    [System.IO.File]::WriteAllText($promptFile, $claudePrompt, [System.Text.Encoding]::UTF8)
-    
-    $result = claude -p "$(Get-Content $promptFile -Raw -Encoding UTF8)" --add-dir $RepoDir 2>&1
-    Write-Host $result
-
-    # 回到 master 准备下一个
-    git checkout master 2>&1 | Out-Null
+# Check existing PR
+$prCheck = gh pr list --head $branch --state open --json number --jq ".[0].number" 2>$null
+if ($prCheck) {
+    Write-Host "  -> Skipped: PR already exists"
+    exit 0
 }
 
+# Check existing branch
+$branchCheck = git ls-remote --heads origin $branch 2>$null
+if ($branchCheck) {
+    Write-Host "  -> Skipped: branch already exists on remote"
+    exit 0
+}
+
+if ($DryRun) {
+    Write-Host "  [DRY RUN] Would launch Claude Code to fix and create PR"
+    exit 0
+}
+
+# Save issue body to temp file to avoid encoding issues
+$bodyFile = "$env:TEMP\coworker-body-${issueNum}.txt"
+gh issue view $issueNum --json body --jq ".body" 2>$null | Out-File -FilePath $bodyFile -Encoding UTF8
+$bodyContent = Get-Content $bodyFile -Raw -Encoding UTF8
+
+# Build prompt for Claude Code
+$prompt = @"
+You are a coding coworker on the webnovel-director project.
+Fix this GitHub issue, then open a PR.
+
+ISSUE NUMBER: ${issueNum}
+ISSUE TITLE: ${title}
+ISSUE BODY: ${bodyContent}
+
+STEPS:
+1. Read relevant files to understand the codebase
+2. Create branch: git checkout -b ${branch}
+3. Make the minimal changes needed to fix this issue
+4. Run smoke test if available: python scripts/test_smoke.py
+5. Commit: git add -A && git commit -m "fix: #${issueNum} - ${title}"
+6. Push: git push origin ${branch}
+7. Create PR: gh pr create --title "fix: #${issueNum} - ${title}" --body "Closes #${issueNum}" --base master
+
+RULES:
+- Only change files related to this issue
+- Do NOT refactor unrelated code
+- Keep changes minimal and focused
+"@
+
+$promptFile = "$env:TEMP\coworker-prompt-${issueNum}.txt"
+[System.IO.File]::WriteAllText($promptFile, $prompt, [System.Text.Encoding]::UTF8)
+Write-Host "  -> Launching Claude Code to fix #${issueNum}..."
+
+claude -p "$(Get-Content $promptFile -Raw -Encoding UTF8)" --add-dir $RepoDir 2>&1
+
+git checkout master 2>&1 | Out-Null
 Write-Host "[coworker] Done."
