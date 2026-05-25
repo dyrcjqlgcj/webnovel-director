@@ -46,7 +46,7 @@
 chapter-review Level 1 完成后，用 `scripts\post_writeback.py` 回写状态：
 
 ```bash
-python scripts/scripts\post_writeback.py <book_dir> --chapter <N> --audit PASS|WARN|FAIL --summary "审查摘要" --write
+python scripts\post_writeback.py <book_dir> --chapter <N> --audit PASS|WARN|FAIL --summary "审查摘要" --write
 ```
 
 规则：

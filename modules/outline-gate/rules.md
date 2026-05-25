@@ -37,12 +37,12 @@
 6. **可执行性** — Goal 长度、Premise Must Hit、动作词。
 
 ```bash
-python scripts/scripts\outline_gate_review.py <book_dir>
-python scripts/scripts\outline_gate_review.py <book_dir> --write-report  # 写入 director/outline_review.md
+python scripts\outline_gate_review.py <book_dir>
+python scripts\outline_gate_review.py <book_dir> --write-report  # 写入 director/outline_review.md
 
 # 逻辑验证（因果链/爽点密度/角色弧线/力量曲线）——在六维审查后运行
-python scripts/scripts\outline_causal_check.py <book_dir>
-python scripts/scripts\outline_causal_check.py <book_dir> --write-report  # 写入 director/outline_logic_review.md
+python scripts\outline_causal_check.py <book_dir>
+python scripts\outline_causal_check.py <book_dir> --write-report  # 写入 director/outline_logic_review.md
 ```
 
 与旧版区别：旧版 `scripts\outline_gate_review.py` 只做结构门禁（行存在/状态字段/缺Goal）；新版做语义审查（六维判定 + 逐章报告 + 特定建议）；`scripts\outline_causal_check.py` 做逻辑结构审查（因果链/密度/弧线/曲线）。
@@ -52,7 +52,7 @@ python scripts/scripts\outline_causal_check.py <book_dir> --write-report  # 写�
 第一版提供保守检查脚本：
 
 ```bash
-python scripts/scripts\outline_gate_review.py <book_dir>
+python scripts\outline_gate_review.py <book_dir>
 ```
 
 它只检查 `templates\chapter_queue.md` 是否可派发，不生成正文。
