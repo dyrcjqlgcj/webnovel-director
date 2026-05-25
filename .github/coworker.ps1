@@ -77,7 +77,7 @@ $promptFile = "$env:TEMP\coworker-prompt-${issueNum}.txt"
 [System.IO.File]::WriteAllText($promptFile, $prompt, [System.Text.Encoding]::UTF8)
 Write-Host "  -> Launching Claude Code to fix #${issueNum}..."
 
-claude -p "$(Get-Content $promptFile -Raw -Encoding UTF8)" --add-dir $RepoDir 2>&1
+claude -p "$(Get-Content $promptFile -Raw -Encoding UTF8)" --add-dir $RepoDir --allowedTools "Bash(git *), Bash(gh *), Edit, Read, Write" --max-budget-usd 0.50 2>&1
 
 git checkout master 2>&1 | Out-Null
 Write-Host "[coworker] Done."
