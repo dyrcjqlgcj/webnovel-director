@@ -1,4 +1,4 @@
-﻿# 执行派发反例
+# 执行派发反例
 
 ## 反例 1：裸 prompt
 
@@ -20,6 +20,6 @@ director_state.blockers 显示「第10章触犯禁飞区」，仍派发第11章�
 
 ## 反例 4：强行绕过脚本 FAIL
 
-`build_task_package.py` 返回 `canWrite=false`，但助手手写一个 prompt 交给 inkos。
+`scripts\build_task_package.py` 返回 `canWrite=false`，但助手手写一个 prompt 交给 inkos。
 
 为什么错：脚本 FAIL 就代表导演闸门没有放行；手写 prompt 等于裸写正文。

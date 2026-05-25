@@ -1,17 +1,17 @@
-﻿# 命题防偏运行规则
+# 命题防偏运行规则
 
 ## 输入
 
 必需：
-- `director/premise.md`
+- `templates\premise.md`
 - 待审对象：用户请求 / 卷纲 / 细纲 / 章节 / cron prompt
 
 建议读取：
 - `director/forbidden_zones.md`
 - `director/role_locks.md`
-- `director/director_state.json5`
-- `director/last_audit.md`
-- `truth/current_state.md`
+- `templates\director_state.json5`
+- `templates\last_audit.md`
+- `templates\current_state.md`
 
 ## 判断维度
 

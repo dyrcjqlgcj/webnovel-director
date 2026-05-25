@@ -1,18 +1,18 @@
-﻿# 章节审查运行规则
+# 章节审查运行规则
 
 ## 输入
 
 必需：
 - 待审章节正文
-- 章节任务包或 `director/chapter_queue.md`
-- `director/premise.md`
+- 章节任务包或 `templates\chapter_queue.md`
+- `templates\premise.md`
 
 建议读取：
-- `director/last_audit.md`
-- `truth/current_state.md`
-- `truth/resource_ledger.md`
-- `truth/particle_ledger.md`
-- `truth/pending_hooks.md`
+- `templates\last_audit.md`
+- `templates\current_state.md`
+- `templates\resource_ledger.md`
+- `templates\particle_ledger.md`
+- `templates\pending_hooks.md`
 
 ## Level 1：每章快速审查
 
@@ -43,10 +43,10 @@
 
 ## 写后回写脚本
 
-chapter-review Level 1 完成后，用 `post_writeback.py` 回写状态：
+chapter-review Level 1 完成后，用 `scripts\post_writeback.py` 回写状态：
 
 ```bash
-python scripts/post_writeback.py <book_dir> --chapter <N> --audit PASS|WARN|FAIL --summary "审查摘要" --write
+python scripts/scripts\post_writeback.py <book_dir> --chapter <N> --audit PASS|WARN|FAIL --summary "审查摘要" --write
 ```
 
 规则：

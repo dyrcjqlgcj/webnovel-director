@@ -1,4 +1,4 @@
-﻿# cron 接口设计
+# cron 接口设计
 
 第一版只设计接口，不自动改 cron。任何自动写作 cron 都必须先过 director 闸门。
 
@@ -32,10 +32,10 @@ Level 1 审查
 目标：写/修第 <N> 章
 必须先执行：
 1. 读取 director/premise.md
-2. 读取 director/director_state.json5
-3. 读取 director/chapter_queue.md
-4. 读取 director/last_audit.md
-5. 读取 truth/current_state.md、truth/resource_ledger.md、truth/particle_ledger.md、truth/pending_hooks.md
+2. 读取 templates\director_state.json5
+3. 读取 templates\chapter_queue.md
+4. 读取 templates\last_audit.md
+5. 读取 templates\current_state.md、templates\resource_ledger.md、templates\particle_ledger.md、templates\pending_hooks.md
 
 闸门：
 - canWrite=false 或 blockers 非空 → 不写正文，只报告阻塞
@@ -60,14 +60,14 @@ Level 1 审查
 
 ## 写后必须更新
 
-- `director/director_state.json5`
-- `director/last_audit.md`
-- `director/audit_log.md`
-- `director/chapter_queue.md`
-- `truth/current_state.md`
-- `truth/resource_ledger.md`
-- `truth/particle_ledger.md`
-- `truth/pending_hooks.md`
+- `templates\director_state.json5`
+- `templates\last_audit.md`
+- `templates\audit_log.md`
+- `templates\chapter_queue.md`
+- `templates\current_state.md`
+- `templates\resource_ledger.md`
+- `templates\particle_ledger.md`
+- `templates\pending_hooks.md`
 - 项目 memory 摘要（只记录关键状态，不贴整章正文）
 
 ## 禁止

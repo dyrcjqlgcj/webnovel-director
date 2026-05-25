@@ -1,19 +1,19 @@
-﻿# 执行派发运行规则
+# 执行派发运行规则
 
 ## 输入
 
 必需：
-- `director/premise.md`
-- `director/director_state.json5`
-- `director/chapter_queue.md`
+- `templates\premise.md`
+- `templates\director_state.json5`
+- `templates\chapter_queue.md`
 - 当前要写的章节编号/目标
 
 建议读取：
-- `director/last_audit.md`
-- `truth/current_state.md`
-- `truth/resource_ledger.md`
-- `truth/particle_ledger.md`
-- `truth/pending_hooks.md`
+- `templates\last_audit.md`
+- `templates\current_state.md`
+- `templates\resource_ledger.md`
+- `templates\particle_ledger.md`
+- `templates\pending_hooks.md`
 
 ## 任务包必须包含
 
@@ -52,7 +52,7 @@ python scripts/build_task_package.py <book_dir> --chapter 12 --out <book_dir>/di
 - 缺少 director/truth 必需文件。
 - `director_state.canWrite=false`。
 - `director_state.blockers` 非空。
-- `chapter_queue.md` 中没有目标章节。
+- `templates\chapter_queue.md` 中没有目标章节。
 - 目标章节状态不是 PASS/READY/待写/可写。
 - 目标章节缺少 Goal 或 Premise Must Hit。
 

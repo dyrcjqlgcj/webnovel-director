@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.1.0 (2026-05-25)
+
+### 子系统自包含化（P0）
+
+**五大子系统不再依赖外部 story-* skill，内置完整方法论。**
+
+- scanner: 新增 `modules\chapter-review\guide.md`（扫榜流程+平台数据源+信号提取规则）+ 5 个专用 reference 文件
+- analyzer: 新增 `modules\chapter-review\guide.md`（快速/深度拆文流程+角色位抽象）+ 5 个专用 reference 文件
+- writer: 新增 `modules\chapter-review\guide.md`（完整写作方法论：情绪驱动/黄金三章/钩子13式/三维度织入/禁用词/长篇短篇双模式）+ 18 个专用 reference 文件
+- reviewer: 新增 `modules\chapter-review\guide.md`（L1/L2/L3 分级+4 Agent 并行审查+R0-R4 修复分级）
+- polisher: 新增 `modules\chapter-review\guide.md`（AI味 vs 自然文本基准+分级保护+替换词表）
+
+### 共享 reference 整合
+
+- 新增 `references/craft/` 目录，整合 22 个跨子系统共享的写作参考文件
+- 删除旧的子系统 README.md（仅含外部 skill 路由占位）
+- 更新 `references/architecture.md` 和 `references/integration-subsystems.md`，移除外部 skill 依赖
+
+### 即装即用
+
+从 GitHub clone 后无需安装任何 story-* 系列 skill，所有子系统方法论自包含。
+
 ## v1.0.0 (2026-05-23)
 
 ### 首发版本

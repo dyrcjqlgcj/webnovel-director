@@ -1,11 +1,9 @@
 ---
 name: webnovel-director
-version: 1.0.0
+version: 2.0.0
 description: |
   中文长篇网文导演系统——从选题到完本的全流程调度台。
-  内置五个统一命名子系统：scanner(市场雷达) / analyzer(拆文引擎) / writer(正文执行器) / reviewer(深度审查) / polisher(去AI味)。
-  提供概念闸门、大纲审查+迭代修复、卷纲细纲防偏、三级分级审查、cron自动日更接口。
-  触发：开新长篇、写大纲/细纲、继续写、自动写作前后、检查主线偏离。
+  内置五个自包含子系统 + web 仪表盘 + 全书画布 + 进度硬校验 + 自动写作闭环。
 ---
 
 # webnovel-director — 网文导演系统
@@ -15,7 +13,7 @@ description: |
 ## 核心原则
 
 1. **主路由不承载全部知识**：只判断任务、分发模块、维护全局约束。
-2. **长篇必须有唯一真相源**：`director/premise.md` + `director/director_state.json5|yaml`。
+2. **长篇必须有唯一真相源**：`templates\premise.md` + `director/director_state.json5|yaml`。
 3. **卷纲/细纲强拦截**：偏离命题或触犯禁飞区，不进入正文。
 4. **正文分级审查**：Level 1 每章，Level 2 每10章，Level 3 每30章/卷末/连续 WARN/FAIL。
 5. **执行器自包含**：writer 子系统内置完整写作方法论，即装即用。
@@ -39,7 +37,7 @@ description: |
 | 拆文/对标分析 | `subsystems/analyzer/` | analyzer |
 | 选材/概念验证 | `modules/concept-gate/` | — |
 | 写卷纲/细纲 | `modules/outline-gate/` | — |
-| 大纲逻辑验证+迭代 | `modules/outline-gate/` + outline_causal_check.py + outline_iterate.py | — |
+| 大纲逻辑验证+迭代 | `modules/outline-gate/` + scripts\outline_causal_check.py + scripts\outline_iterate.py | — |
 | 写/续写正文 | `modules/execution-dispatch/` | writer |
 | 检查偏离 | `modules/premise-guard/` + `modules/chapter-review/` | reviewer |
 | 修稿/回炉 | `modules/repair-feedback/` | writer + reviewer |
@@ -52,13 +50,13 @@ description: |
 ### A. 开书（完整 9 步）
 
 1. **scanner 扫榜选材**：若方向不明确，先用 scanner 扫榜；或手动出多提案让用户选。
-2. **概念闸门**：对 1-3 个候选概念跑 `concept_gate.py`，六维打分，PASS 才能进入下一步。FAIL 则修改或重新提案。有对标书时先跑 analyzer。
+2. **概念闸门**：对 1-3 个候选概念跑 `scripts\concept_gate.py`，六维打分，PASS 才能进入下一步。FAIL 则修改或重新提案。有对标书时先跑 analyzer。
 3. **跑 init_project.py**：建目录骨架。
 4. **填 premise.md**：书名承诺 / 命题三要素 / 禁飞区 / 角色功能锁。
 5. **写 story/outline/volume_map.md**：卷结构 × 章数 × 核心事件 × 卷末状态。
 6. **写 chapter_queue.md**：前 10-20 章细纲（每章 Goal / Premise Must Hit / Forbidden）。
 7. **填 truth files**：current_state / resource_ledger / particle_ledger / pending_hooks / relationship_graph 非空。
-8. **大纲闸门**：跑 `outline_gate_review.py`（六维）→ `outline_causal_check.py`（逻辑）→ `outline_iterate.py`（迭代修复）。全部 PASS 后 canWrite=true。
+8. **大纲闸门**：跑 `scripts\outline_gate_review.py`（六维）→ `scripts\outline_causal_check.py`（逻辑）→ `scripts\outline_iterate.py`（迭代修复）。全部 PASS 后 canWrite=true。
 9. **跑 build_task_package.py**：生成第一章任务包，派发到 writer 子系统。
 
 ⚠ 常见遗漏：
@@ -69,7 +67,7 @@ description: |
 
 ### B. 写前闸门
 
-每次写章前必须读取：`director/premise.md`、`director/director_state.json5|yaml`、`director/last_audit.md`、`director/chapter_queue.md`、truth files。若卷纲/细纲触犯禁飞区或命题偏离，停止并给修复方案。
+每次写章前必须读取：`templates\premise.md`、`director/director_state.json5|yaml`、`templates\last_audit.md`、`templates\chapter_queue.md`、truth files。若卷纲/细纲触犯禁飞区或命题偏离，停止并给修复方案。
 
 ### C. 正文执行
 
@@ -90,21 +88,26 @@ description: |
 
 | 脚本 | 用途 | 是否写正文 |
 |---|---|---|
-| `scripts/concept_gate.py` | 六维概念验证打分 | 否 |
+| `scripts\concept_gate.py` | 六维概念验证打分 | 否 |
 | `scripts/init_project.py` | 初始化 director/truth 骨架 | 否 |
 | `scripts/director_doctor.py` | 一键体检项目状态/队列/闸门 | 否 |
 | `scripts/extract_premise.py` | 从 story 文件自动生成 premise 初稿 | 否 |
-| `scripts/outline_gate_review.py` | 逐章六维审查报告 | 否 |
-| `scripts/outline_causal_check.py` | 大纲逻辑验证：因果链/爽点密度/角色弧线/力量曲线 | 否 |
-| `scripts/outline_iterate.py` | 迭代修复：检查→分组→LLM修复→重查→循环至通过 | 否 |
+| `scripts\outline_gate_review.py` | 逐章六维审查报告 | 否 |
+| `scripts\outline_causal_check.py` | 大纲逻辑验证：因果链/爽点密度/角色弧线/力量曲线 | 否 |
+| `scripts\outline_iterate.py` | 迭代修复：检查→分组→LLM修复→重查→循环至通过 | 否 |
 | `scripts/build_task_package.py` | 在闸门通过后生成章节任务包 | 否 |
 | `scripts/audit_chapters.py` | 快速章节关键词审计 | 否 |
 | `scripts/review_chapter.py` | 正文→任务包对照 L1 审查报告 | 否 |
 | `scripts/review_parallel.py` | 4 子 Agent 并行审查 + 交叉矛盾检测 | 否 |
 | `scripts/post_writeback.py` | 写后根据审查结果回写 director/truth | 否 |
 | `scripts/repair_plan.py` | FAIL/WARN 自动分级 R0-R4 + 修复步骤 | 否 |
+| `scripts/director_meta_iterate.py` | webnovel-director 自检+迭代修复引擎 | 否 |
 | `scripts/validate_relationships.py` | 检查关系图因果边完整性 | 否 |
 | `scripts/check_cron_prompt.py` | 检查 cron prompt 是否绕过 director | 否 |
+| `scripts/generate_outline_queue.py` | 从卷纲自动生成 chapter_queue 骨架 | 否 |
+| `scripts/validate_pacing.py` | 检查细纲进度是否与卷纲 pace 对齐（过快/过慢检测） | 否 |
+| `scripts/test_smoke.py` | 全链路冒烟测试 | 否 |
+| `scripts/dashboard_server.py` | Web 仪表盘服务器：项目状态/审查色块/一键操作 | 否 |
 
 ## 主要参考文件
 

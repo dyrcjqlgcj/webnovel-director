@@ -32,7 +32,7 @@
 ### 1. 安装
 
 ```bash
-git clone https://github.com/yourname/webnovel-director.git
+git clone https://github.com/worldwonderer/webnovel-director.git
 cd webnovel-director
 pip install -r requirements.txt
 ```
@@ -105,17 +105,17 @@ webnovel-director/
 │   ├── transition-module/      # 转场/对话/章末
 │   └── repair-feedback/        # 修复+回写
 │
-├── subsystems/                 # 5 个内嵌子系统
-│   ├── scanner/                # 市场雷达：扫榜+趋势
-│   ├── analyzer/               # 拆文引擎：对标分析
-│   ├── writer/                 # 正文执行器：方法论+钩子+禁用词
-│   ├── reviewer/               # 深度审查：L1/L2/L3
-│   └── polisher/               # 去AI味：文字润色
+├── subsystems/                 # 5 个自包含子系统（无需外部 skill）
+│   ├── scanner/                # 市场雷达：modules\chapter-review\guide.md + 5 个 reference 文件
+│   ├── analyzer/               # 拆文引擎：modules\chapter-review\guide.md + 5 个 reference 文件
+│   ├── writer/                 # 正文执行器：modules\chapter-review\guide.md + 18 个 reference 文件
+│   ├── reviewer/               # 深度审查：modules\chapter-review\guide.md + rubric 文件
+│   └── polisher/               # 去AI味：modules\chapter-review\guide.md + 共享 craft 引用
 │
 ├── scripts/                    # 15+ 个可执行脚本
 │   ├── concept_gate.py         # 概念验证
 │   ├── init_project.py         # 项目初始化
-│   ├── director_doctor.py      # 一键体检
+│   ├── scripts\director_doctor.py      # 一键体检
 │   ├── outline_gate_review.py  # 大纲六维审查
 │   ├── outline_causal_check.py # 大纲逻辑验证
 │   ├── outline_iterate.py      # 迭代修复引擎
@@ -126,6 +126,7 @@ webnovel-director/
 │   └── ...
 │
 ├── references/                 # 架构/集成/接口文档
+│   └── craft/                  # 22 个共享写作参考文件（禁用词/技法/情绪/人物）
 ├── templates/                  # director/truth 模板
 └── .gitignore
 ```
@@ -134,7 +135,7 @@ webnovel-director/
 
 ## 九个模块
 
-每个模块遵循五文件协议：`guide.md`（教程）、`rules.md`（运行规则）、`examples-good.md`（正例）、`examples-bad.md`（反例）、`sources.md`（来源）。
+每个模块遵循五文件协议：`modules\chapter-review\guide.md`（教程）、`modules\chapter-review\rules.md`（运行规则）、`modules\chapter-review\examples-good.md`（正例）、`modules\chapter-review\examples-bad.md`（反例）、`modules\chapter-review\sources.md`（来源）。
 
 | 模块 | 功能 | 触发时机 |
 |------|------|----------|
@@ -201,7 +202,7 @@ post_writeback（更新状态）
 1. 所有模块遵循五文件协议
 2. 脚本需通过 `python -m compileall scripts/`
 3. 新增功能先写正例+反例再写规则
-4. PR 前跑 `director_doctor.py` 验证
+4. PR 前跑 `scripts\director_doctor.py` 验证
 
 ## 许可
 

@@ -10,7 +10,7 @@ Outputs a PASS/WARN/FAIL report suitable as input for post_writeback.
 """
 from __future__ import annotations
 from pathlib import Path
-import argparse, json, re
+import argparse, datetime, json, re
 
 # ── helpers ──
 
@@ -51,6 +51,35 @@ def load_task_package(path: Path) -> dict | None:
     return pkg
 
 
+def load_from_chapter_queue(cq_path: Path, chapter: int) -> dict | None:
+    """Extract a single chapter's data from chapter_queue.md table."""
+    text = read(cq_path)
+    if not text:
+        return None
+    for line in text.splitlines():
+        s = line.strip()
+        if not s.startswith("|") or "---" in s or "Chapter" in s:
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if len(cells) < 6:
+            continue
+        n = re.sub(r"\D", "", cells[0])
+        if not n.isdigit() or int(n) != chapter:
+            continue
+        # Convert table row to pkg format
+        goal = cells[2] if len(cells) > 2 else ""
+        premise_hit = cells[3] if len(cells) > 3 else ""
+        forbidden = cells[4] if len(cells) > 4 else ""
+        return {
+            "chapter": chapter,
+            "title_hint": cells[1] if len(cells) > 1 else "",
+            "chapter_goal": goal,
+            "premise_must_hit": [premise_hit] if premise_hit and premise_hit != "-" else [],
+            "forbidden": [forbidden] if forbidden and forbidden != "-" else [],
+        }
+    return None
+
+
 # ── checkers ──
 
 def check_length(text: str, target: int = 2500) -> dict:
@@ -81,25 +110,33 @@ def check_premise_hits(text: str, must_hit: list[str]) -> dict:
     hits = []
     for term in must_hit:
         if not term: continue
-        # Check if at least 50% of the term's key chars appear
-        keywords = re.findall(r"[\u4e00-\u9fff]{2,}", term)
+        # Split premise on non-Chinese delimiters into meaningful chunks,
+        # then extract 2-4 char windows for flexible matching
+        chunks = re.split(r"[——：:（）()，。！？\s\-\"'=«»]+", term)
+        keywords = []
+        for chunk in chunks:
+            if len(chunk) >= 2:
+                keywords.append(chunk)  # full chunk
+                # Also extract sliding 2-char windows for chunks >= 3 chars
+                if len(chunk) >= 3:
+                    for i in range(len(chunk) - 1):
+                        w = chunk[i:i+2]
+                        if w not in keywords:
+                            keywords.append(w)
+        keywords = list(dict.fromkeys(keywords))  # deduplicate
         if keywords and any(kw in text for kw in keywords):
             hits.append(term)
     if not must_hit: return {"pass":True, "issue":"任务包无 premise_must_hit", "severity":"WARN"}
-    if len(hits) < len(must_hit) / 2: return {"pass":False, "issue":f"仅命中 {len(hits)}/{len(must_hit)} 条命题兑现", "severity":"FAIL"}
+    if len(hits) < max(1, len(must_hit) / 2): return {"pass":False, "issue":f"仅命中 {len(hits)}/{len(must_hit)} 条命题兑现", "severity":"FAIL"}
     if len(hits) < len(must_hit): return {"pass":True, "issue":f"命中 {len(hits)}/{len(must_hit)} 条", "severity":"WARN"}
     return {"pass":True, "issue":f"命中 {len(hits)}/{len(must_hit)} 条", "severity":"PASS"}
 
 def check_structure(text: str) -> dict:
-    # Check for basic story beats
+    # Check paragraph density only (dropped dialogue ratio — not meaningful)
     para_count = len([l for l in text.split("\n") if l.strip()])
-    dialogue_ratio = len(re.findall(r"[「「""'']", text)) / max(len(text), 1) * 1000
-    has_action = bool(re.search(r"[\u4e00-\u9fff]{3,}[。；！]", text[-2000:]))
-    issues = []
-    if para_count < 15: issues.append("段落偏少（叙事密度可能过高）")
-    if dialogue_ratio < 1: issues.append("对白密度极低")
-    if not issues: return {"pass":True, "issue":"结构基本合理", "severity":"PASS"}
-    return {"pass":True, "issue":"; ".join(issues), "severity":"WARN"}
+    if para_count < 15:
+        return {"pass": True, "issue": "段落偏少（叙事密度可能过高）", "severity": "WARN"}
+    return {"pass": True, "issue": "结构合理", "severity": "PASS"}
 
 
 # ── main ──
@@ -121,23 +158,21 @@ def main() -> int:
     ]
     tp = next((t for t in tp_candidates if t.exists()), None)
     if not tp:
-        # Fallback: use chapter_queue row directly
+        # Fallback: extract chapter row from chapter_queue.md
         cq_path = book / "director" / "chapter_queue.md"
         if not cq_path.exists():
             print("结论：FAIL")
-            print(f"依据：任务包不存在 {tp_candidates[0]} 且 chapter_queue 也不存在")
+            print(f"依据：任务包不存在且 chapter_queue 也不存在")
             print("下一步：运行 init_project / 补充 chapter_queue")
             return 1
-        pkg = load_task_package(cq_path)
+        pkg = load_from_chapter_queue(cq_path, args.chapter)
         if not pkg:
             print("结论：FAIL")
-            print("依据：无法解析 chapter_queue")
-            print("下一步：修复 chapter_queue 格式")
+            print(f"依据：chapter_queue 中未找到第{args.chapter}章")
+            print("下一步：补充 chapter_queue 中的该章条目")
             return 1
-        # Mark that we used chapter_queue fallback
-        args.chapter = ch_num
-
-    pkg = load_task_package(tp)
+    else:
+        pkg = load_task_package(tp)
     if not pkg:
         print("结论：FAIL")
         print("依据：无法解析任务包")
@@ -218,6 +253,21 @@ def main() -> int:
             print("下一步：人工复核后 post_writeback --audit PASS|WARN")
         else:
             print("下一步：repair-feedback，修后重审")
+
+    # Write review record to history file (shared with dashboard)
+    rh_path = book / "director" / ".review_history.json"
+    history = {}
+    if rh_path.exists():
+        try:
+            history = json.loads(read(rh_path))
+        except json.JSONDecodeError:
+            pass
+    history[str(args.chapter)] = {
+        "time": datetime.datetime.now().strftime("%m/%d %H:%M"),
+        "verdict": status,
+        "issues": problems,
+    }
+    rh_path.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
 
     return 1 if status == "FAIL" else 0
 

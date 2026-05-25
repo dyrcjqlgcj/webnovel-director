@@ -1,16 +1,16 @@
-﻿# 一致性模块运行规则
+# 一致性模块运行规则
 
 ## 输入
 
 必需：
 - 待审正文/大纲
-- `truth/current_state.md`
+- `templates\current_state.md`
 
 建议读取：
-- `truth/resource_ledger.md`
-- `truth/particle_ledger.md`
-- `truth/pending_hooks.md`
-- `director/audit_log.md`
+- `templates\resource_ledger.md`
+- `templates\particle_ledger.md`
+- `templates\pending_hooks.md`
+- `templates\audit_log.md`
 
 ## 检查维度
 
@@ -56,7 +56,7 @@
 
 ## 关系图验证
 
-新增 `truth/relationship_graph.yaml` 用于记录人物、资源、钩子之间的因果边。
+新增 `templates\relationship_graph.yaml` 用于记录人物、资源、钩子之间的因果边。
 
 验证命令：
 

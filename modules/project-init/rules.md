@@ -1,4 +1,4 @@
-﻿# 项目初始化运行规则
+# 项目初始化运行规则
 
 ## 输入
 
@@ -23,10 +23,10 @@
 3. **生成 director_state**
    - 当前卷、当前章、executor、canWrite、blockers。
 4. **生成 truth files**
-   - `truth/current_state.md`
-   - `truth/resource_ledger.md`
-   - `truth/particle_ledger.md`
-   - `truth/pending_hooks.md`
+   - `templates\current_state.md`
+   - `templates\resource_ledger.md`
+   - `templates\particle_ledger.md`
+   - `templates\pending_hooks.md`
 5. **交接给 outline-gate**
    - 输出下一步需要生成的卷纲/前 10-20 章细纲。
 
@@ -42,8 +42,8 @@
 
 ## PASS 条件
 
-- `director/premise.md` 存在且包含命题三要素、禁飞区、角色功能锁。
-- `director/director_state.json5` 存在且 `canWrite` 字段明确。
+- `templates\premise.md` 存在且包含命题三要素、禁飞区、角色功能锁。
+- `templates\director_state.json5` 存在且 `canWrite` 字段明确。
 - truth files 至少包含 current_state 与 pending_hooks。
 
 ## WARN 条件

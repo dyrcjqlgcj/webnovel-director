@@ -1,4 +1,4 @@
-﻿# 卷纲/细纲闸门正例
+# 卷纲/细纲闸门正例
 
 ## 例：细纲 FAIL 后修复
 
@@ -19,4 +19,4 @@
 
 前 10 章每 2-3 章有一次刷怪复利可见收益，章末钩子都指向更大副作用。
 
-结论可 PASS，并将章节队列写入 `director/chapter_queue.md`。
+结论可 PASS，并将章节队列写入 `templates\chapter_queue.md`。

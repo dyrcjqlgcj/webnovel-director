@@ -1,6 +1,6 @@
-﻿# 写后回写接口
+# 写后回写接口
 
-`post_writeback.py` 用于在 chapter-review Level 1 之后，把审查结论写回 director/truth 层。
+`scripts\post_writeback.py` 用于在 chapter-review Level 1 之后，把审查结论写回 director/truth 层。
 
 它不写正文，也不修改章节文件。
 
@@ -9,7 +9,7 @@
 默认 dry-run：
 
 ```bash
-python scripts/post_writeback.py <book_dir> \
+python scripts/scripts\post_writeback.py <book_dir> \
   --chapter 31 \
   --audit PASS \
   --summary "本章完成第7块碎片验证，主角确认神殿标记会响应在线碎片"
@@ -18,7 +18,7 @@ python scripts/post_writeback.py <book_dir> \
 实际写回：
 
 ```bash
-python scripts/post_writeback.py <book_dir> \
+python scripts/scripts\post_writeback.py <book_dir> \
   --chapter 31 \
   --audit PASS \
   --summary "本章完成第7块碎片验证" \
@@ -41,14 +41,14 @@ python scripts/post_writeback.py <book_dir> \
 
 `--write` 会备份并更新：
 
-- `director/director_state.json5`
-- `director/last_audit.md`
-- `director/audit_log.md`
-- `director/chapter_queue.md`
-- `truth/current_state.md`
-- `truth/resource_ledger.md`
-- `truth/particle_ledger.md`
-- `truth/pending_hooks.md`
+- `templates\director_state.json5`
+- `templates\last_audit.md`
+- `templates\audit_log.md`
+- `templates\chapter_queue.md`
+- `templates\current_state.md`
+- `templates\resource_ledger.md`
+- `templates\particle_ledger.md`
+- `templates\pending_hooks.md`
 
 备份格式：`<filename>.bak.YYYYMMDD-HHMMSS`
 

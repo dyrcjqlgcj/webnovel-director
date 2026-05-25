@@ -27,21 +27,35 @@ def split_cell(row: str) -> list[str]:
 # ── Parse volume map ──
 
 def parse_volume_map(path: Path) -> list[dict]:
-    """Parse director/volume_map.md or story/outline/volume_map.md."""
+    """Parse director/volume_map.md or story/outline/volume_map.md.
+    
+    Handles two formats:
+      1. Range format: "第一卷：先知之名（1-75 章）" → computes 75 chapters
+      2. Count format: "第一卷：开篇（75 章）" → uses 75 directly
+    """
     vols = []
     text = read(path)
-    # Match patterns like "第一卷：xxx" or "### 第一卷：xxx"
     vol_pattern = re.compile(r"第([一二三四五六七八九十\d]+)卷[：:]\s*(.+)", re.MULTILINE)
     for m in vol_pattern.finditer(text):
         vol_num = m.group(1)
         vol_name = m.group(2).strip()
-        # Try to extract chapter count and word count
-        ch_match = re.search(r"(\d+)\s*章", vol_name)
+        chapters = 0
+        # Try range format: "1-75 章" or "（1-75 章）"
+        range_match = re.search(r"(\d+)\s*[-–—]\s*(\d+)\s*章", vol_name)
+        if range_match:
+            start = int(range_match.group(1))
+            end = int(range_match.group(2))
+            chapters = end - start + 1
+        else:
+            # Try count format: "75 章"
+            ch_match = re.search(r"(\d+)\s*章", vol_name)
+            if ch_match:
+                chapters = int(ch_match.group(1))
         word_match = re.search(r"(\d+)\s*万字", vol_name)
         vols.append({
             "volume": vol_num,
             "name": vol_name,
-            "chapters": int(ch_match.group(1)) if ch_match else 0,
+            "chapters": chapters,
             "words": int(word_match.group(1)) if word_match else 0,
         })
     return vols
@@ -76,7 +90,7 @@ def parse_chapter_queue(path: Path) -> list[dict]:
 def check_causal_chain(chapters: list[dict]) -> list[dict]:
     """Check that every chapter's goal logically connects to surrounding chapters."""
     issues = []
-    action_causes = ["因为", "由于", "上文", "上一章", "之前", "接到", "得知", "发现"]
+    action_causes = ["因为", "由于", "上文", "上一章", "之前", "接到", "得知", "发现", "承接"]
     action_effects = ["导致", "触发", "引出", "引起", "使得", "从而", "因此", "打开", "开启", "推动"]
 
     for i, ch in enumerate(chapters):

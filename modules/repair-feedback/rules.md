@@ -1,4 +1,4 @@
-﻿# 修复反馈运行规则
+# 修复反馈运行规则
 
 ## 输入
 
@@ -7,9 +7,9 @@
 - 待修对象：大纲/细纲/章节/状态文件
 
 建议读取：
-- `director/last_audit.md`
-- `director/director_state.json5`
-- `director/chapter_queue.md`
+- `templates\last_audit.md`
+- `templates\director_state.json5`
+- `templates\chapter_queue.md`
 - truth files
 
 ## 修复分级

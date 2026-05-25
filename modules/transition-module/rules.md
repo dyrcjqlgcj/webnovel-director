@@ -1,4 +1,4 @@
-﻿# 转场模块运行规则
+# 转场模块运行规则
 
 ## 输入
 
@@ -8,8 +8,8 @@
 
 建议读取：
 - 章节任务包
-- `truth/current_state.md`
-- `director/last_audit.md`
+- `templates\current_state.md`
+- `templates\last_audit.md`
 
 ## 检查维度
 

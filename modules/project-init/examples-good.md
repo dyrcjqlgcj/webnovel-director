@@ -1,4 +1,4 @@
-﻿# 项目初始化正例
+# 项目初始化正例
 
 ## 例 1：新书
 
@@ -23,6 +23,6 @@
 
 输出重点：
 - 不移动正文。
-- 扫描已有目录，生成 `director/audit_log.md` 初始记录。
+- 扫描已有目录，生成 `templates\audit_log.md` 初始记录。
 - `director_state.currentChapter = 36`。
 - `canWrite = false`，直到 premise-guard 对已有主线过一遍。
