@@ -207,3 +207,5 @@ post_writeback（更新状态）
 ## 许可
 
 MIT License
+
+> Coworker 自动化已就绪 ✓
