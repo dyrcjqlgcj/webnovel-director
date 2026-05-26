@@ -279,6 +279,7 @@ webnovel-director/
 │   ├── outline_causal_check.py   # 逻辑验证
 │   ├── outline_iterate.py        # 迭代修复引擎
 │   ├── generate_outline_queue.py # 细纲自动生成
+│   ├── extend_outline.py         # 细纲自动扩展
 │   ├── build_task_package.py     # 任务包生成
 │   ├── audit_chapters.py         # 快速关键词审计
 │   ├── review_chapter.py         # L1 审查
