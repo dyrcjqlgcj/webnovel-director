@@ -288,195 +288,219 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>网文导演仪表盘</title>
 <style>
-:root, [data-theme="dark"] {
-  --bg: #0f1117; --card: #1a1d27; --border: #2a2d3a;
-  --text: #e1e4ed; --muted: #6b7084; --accent: #6366f1;
+:root {
+  --bg: #0d1117; --card: #161b22; --border: #30363d;
+  --text: #e6edf3; --muted: #8b949e; --accent: #3b82f6;
   --pass: #22c55e; --warn: #eab308; --fail: #ef4444;
-  --written: #3b82f6; --queue: #6b7280;
-}
-[data-theme="light"] {
-  --bg: #f5f5f7; --card: #ffffff; --border: #e5e7eb;
-  --text: #1f2937; --muted: #9ca3af; --accent: #4f46e5;
-  --pass: #16a34a; --warn: #ca8a04; --fail: #dc2626;
-  --written: #2563eb; --queue: #9ca3af;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: var(--bg); color: var(--text); min-height: 100vh; }
-header { background: var(--card); border-bottom: 1px solid var(--border);
-  padding: 16px 24px; display: flex; justify-content: space-between; align-items: center;
-  position: sticky; top: 0; z-index: 10; }
-header h1 { font-size: 20px; font-weight: 600; }
-header .stats { display: flex; gap: 20px; font-size: 13px; color: var(--muted); }
-header .stats strong { color: var(--text); }
-main { max-width: 1600px; margin: 0 auto; padding: 24px 48px; display: grid;
-  grid-template-columns: 1fr 320px; gap: 20px; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.5; }
+
+/* Header */
+#header { background: var(--card); border-bottom: 1px solid var(--border);
+  padding: 12px 24px; display: flex; align-items: center; gap: 14px;
+  position: sticky; top: 0; z-index: 20; }
+#header h1 { font-size: 18px; font-weight: 700; }
+#header .status-block { padding: 4px 14px; border-radius: 6px; font-size: 12px;
+  font-weight: 600; white-space: nowrap; }
+#header .spacer { flex: 1; }
+#header .head-stat { font-size: 12px; color: var(--muted); }
+#header .head-stat b { color: var(--text); }
+
+/* Layout */
+#main { max-width: 1400px; margin: 0 auto; padding: 20px 24px;
+  display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
+
+/* Cards */
 .card { background: var(--card); border: 1px solid var(--border);
-  border-radius: 10px; padding: 20px; }
-.card h2 { font-size: 14px; color: var(--muted); text-transform: uppercase;
-  letter-spacing: 1px; margin-bottom: 12px; }
-.summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.summary-item { text-align: center; padding: 12px; background: rgba(255,255,255,0.03);
-  border-radius: 8px; }
-.summary-item .value { font-size: 28px; font-weight: 700; }
-.summary-item .label { font-size: 11px; color: var(--muted); margin-top: 4px; }
-.pass-color { color: var(--pass); } .warn-color { color: var(--warn); }
-.fail-color { color: var(--fail); } .written-color { color: var(--written); }
+  border-radius: 8px; padding: 16px; }
+.card h2 { font-size: 13px; color: var(--muted); letter-spacing: 0.5px;
+  margin-bottom: 12px; font-weight: 600; }
 
-.progress-bar { height: 6px; background: var(--border); border-radius: 3px;
-  margin: 16px 0; overflow: hidden; }
-.progress-fill { height: 100%; background: var(--accent); border-radius: 3px;
-  transition: width 0.5s ease; }
-
-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
-th { text-align: left; padding: 8px 10px; color: var(--muted); font-weight: 500;
-  border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; }
-td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); }
-td.ch { font-weight: 600; width: 50px; }
-td.status { width: 80px; }
-td.goal { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-td.goal:hover { white-space: normal; overflow: visible; background: var(--bg); position: relative; z-index: 1; }
-
-.status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
-  font-size: 11px; font-weight: 600; }
-.status-badge.PASS, .status-badge.WRITTEN { background: rgba(34,197,94,0.15); color: var(--pass); }
-.status-badge.WARN { background: rgba(234,179,8,0.15); color: var(--warn); }
-.status-badge.FAIL { background: rgba(239,68,68,0.15); color: var(--fail); }
-.status-badge.QUEUE { background: rgba(107,114,128,0.15); color: var(--queue); }
-
-.actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
-.btn { padding: 10px 18px; border: 1px solid var(--border); border-radius: 8px;
+/* Action bar */
+#action-bar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
+.btn { padding: 8px 16px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--card); color: var(--text); cursor: pointer; font-size: 13px;
-  font-weight: 500; transition: all 0.15s; }
-.btn:hover { border-color: var(--accent); background: rgba(99,102,241,0.1); }
+  font-weight: 500; transition: opacity 0.15s; }
+.btn:hover { opacity: 0.85; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn.primary:hover { opacity: 0.9; }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.hook-list { list-style: none; }
-.hook-list li { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
-  font-size: 12px; color: var(--muted); }
+/* Table */
+#table-wrap { max-height: 600px; overflow-y: auto; border-radius: 6px; }
+#chapter-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+#chapter-table th { text-align: left; padding: 8px 12px; color: var(--muted);
+  font-weight: 500; border-bottom: 2px solid var(--border); font-size: 11px;
+  letter-spacing: 0.5px; position: sticky; top: 0; background: var(--card); z-index: 1; }
+#chapter-table td { padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+#chapter-table tbody tr { cursor: pointer; transition: background 0.1s; }
+#chapter-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+#chapter-table .ch-col { font-weight: 600; width: 50px; }
+#chapter-table .words-col { text-align: right; font-variant-numeric: tabular-nums;
+  font-size: 12px; color: var(--muted); width: 70px; }
+#chapter-table .score-col { text-align: center; font-weight: 700; width: 55px; }
+#chapter-table .status-col { width: 75px; }
+#chapter-table .review-col { width: 44px; text-align: center; }
 
-.output-panel { background: var(--bg); border-radius: 8px;
-  padding: 12px; font-family: 'SF Mono', 'Consolas', monospace; font-size: 12px;
-  min-height: 500px; overflow-y: auto; white-space: pre-wrap; }
+/* Filter row */
+.filter-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.filter-row select { background: var(--card); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
 
-.blockers { margin-top: 12px; }
-.blocker-tag { display: inline-block; padding: 3px 8px; margin: 2px;
-  background: rgba(239,68,68,0.12); color: var(--fail); border-radius: 4px; font-size: 11px; }
+/* Sidebar */
+#sidebar { display: flex; flex-direction: column; gap: 16px; }
+.progress-bg { height: 6px; background: var(--border); border-radius: 3px;
+  margin: 8px 0 12px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: 3px;
+  transition: width 0.5s ease; }
+.stat-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+.stat-row .val { font-weight: 600; }
+.audit-entry { font-size: 12px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.audit-entry .time { color: var(--muted); font-size: 11px; }
+.blocker-item { padding: 3px 0; font-size: 12px; color: var(--fail); }
 
-.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
-  border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.refresh-time { font-size: 11px; color: var(--muted); margin-top: 8px; }
+/* Output panel */
+#output { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 10px; font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
+  font-size: 12px; max-height: 260px; overflow-y: auto; white-space: pre-wrap;
+  margin-top: 16px; color: var(--muted); }
 
 /* Modal */
-.modal-overlay { display:none; position:fixed; top:0;left:0;right:0;bottom:0;
-  background:rgba(0,0,0,0.6); z-index:100; justify-content:center;align-items:center; }
-.modal-overlay.show { display:flex; }
-.modal-box { background:var(--card); border:1px solid var(--border); border-radius:12px;
-  padding:24px; max-width:600px; width:90%; max-height:80vh; overflow-y:auto; }
-.modal-box h3 { font-size:16px; margin-bottom:8px; }
-.modal-box .meta { font-size:12px; color:var(--muted); margin-bottom:16px; }
-.modal-box .field { margin-bottom:12px; }
-.modal-box .field-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
-.modal-box .field-value { font-size:13px; line-height:1.5; margin-top:4px; }
-.modal-box .close-btn { float:right; background:none; border:none; color:var(--muted);
-  font-size:20px; cursor:pointer; }
+#modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
+#modal-overlay.show { display: flex; }
+#modal-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 24px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; }
+#modal-box h3 { font-size: 16px; margin-bottom: 6px; }
+#modal-box .meta { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+#modal-box .field { margin-bottom: 12px; }
+#modal-box .field-label { font-size: 11px; color: var(--muted); letter-spacing: 0.5px;
+  margin-bottom: 4px; font-weight: 500; }
+#modal-box .field-value { font-size: 13px; line-height: 1.5; }
+#modal-box .close-btn { float: right; background: none; border: none; color: var(--muted);
+  font-size: 22px; cursor: pointer; line-height: 1; }
+#modal-box textarea { width: 100%; min-height: 60px; background: var(--bg);
+  color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px; font-size: 13px; resize: vertical; font-family: inherit; }
+
+/* Misc */
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite;
+  vertical-align: middle; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.refresh-indicator { font-size: 11px; color: var(--muted); white-space: nowrap; }
 </style>
 </head>
 <body>
-<header>
-  <h1 id="project-title">载入中...</h1>
-  <div class="stats">
-    <select id="vol-selector" onchange="switchVolume()" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;margin-right:8px"></select>
-    <span>进度 <strong id="ch-progress">-</strong></span>
-    <span>字数 <strong id="ch-words">-</strong></span>
-    <span>状态 <strong id="ch-status">-</strong></span>
-    <button onclick="toggleTheme()" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px;margin-left:8px" title="切换明暗主题">🌓</button>
-  </div>
+
+<header id="header">
+  <h1 id="h-title">载入中...</h1>
+  <div class="status-block" id="h-status" style="background:rgba(107,114,128,0.15)">--</div>
+  <div class="spacer"></div>
+  <span class="head-stat">已写 <b id="h-written">-</b> 章</span>
+  <span class="head-stat" style="margin-left: 14px">字数 <b id="h-words">-</b></span>
+  <span class="refresh-indicator" style="margin-left: 14px" id="refresh-hint"></span>
 </header>
 
-<main>
+<div id="main">
   <div>
-    <!-- Summary -->
-    <div class="summary-grid card" style="grid-column:1/-1">
-      <div class="summary-item"><div class="value" id="s-chapters">-</div><div class="label">已写章节</div></div>
-      <div class="summary-item"><div class="value" id="s-words">-</div><div class="label">总字数</div></div>
-      <div class="summary-item"><div class="value" id="s-pass">-</div><div class="label pass-color">已审查</div></div>
+    <!-- Action bar -->
+    <div id="action-bar">
+      <button class="btn primary" onclick="doAction('doctor')">一键体检</button>
+      <button class="btn" onclick="doAction('review')">大纲审查</button>
+      <button class="btn" onclick="refresh()">刷新</button>
+      <span style="flex:1"></span>
+      <button class="btn" onclick="exportTable()" style="font-size:12px">导出</button>
     </div>
-    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
 
-    <!-- Chapter Table -->
-    <div class="card">
-      <h2>章节状态
-        <select id="status-filter" onchange="render(STATE)" style="margin-left:12px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:12px;">
-          <option value="">全部状态</option>
-          <option value="written">✅ 已写</option>
-          <option value="pass">🟢 通过</option>
-          <option value="warn">🟡 警告</option>
-          <option value="fail">🔴 失败</option>
-          <option value="queue">⬜ 待写</option>
+    <!-- Chapter table -->
+    <div class="card" style="padding:12px">
+      <div class="filter-row">
+        <h2 style="margin:0;flex:1">章节状态</h2>
+        <select id="vol-select" onchange="switchVolume()"></select>
+        <select id="status-filter" onchange="applyFilter()">
+          <option value="">全部</option>
+          <option value="written">已写</option>
+          <option value="pass">通过</option>
+          <option value="warn">警告</option>
+          <option value="fail">失败</option>
+          <option value="queue">待写</option>
         </select>
-        <span style="font-size:11px;color:var(--muted);margin-left:8px;font-weight:400" id="auto-refresh-label"></span>
-      </h2>
-      <div style="max-height:600px;overflow-y:auto">
-      <table id="chapter-table"><thead><tr>
-        <th style="width:40px">#</th><th style="width:80px">标题</th><th style="width:50px">字数</th><th style="width:44px">评分</th><th style="width:55px">审查</th><th style="width:75px">时间</th><th style="width:160px">审查详情</th><th style="width:60px">状态</th><th style="width:44px"></th>
-      </tr></thead><tbody></tbody></table>
+      </div>
+      <div id="table-wrap">
+        <table id="chapter-table">
+          <thead><tr>
+            <th class="ch-col">#</th>
+            <th>标题</th>
+            <th class="words-col">字数</th>
+            <th class="score-col">评分</th>
+            <th class="status-col">状态</th>
+            <th class="review-col"></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
       </div>
     </div>
 
-    <!-- Actions -->
-    <div class="card">
-      <h2>操作</h2>
-      <div class="actions">
-        <button class="btn primary" onclick="doAction('doctor')">🔍 一键体检</button>
-        <button class="btn" onclick="doAction('review')">📋 大纲审查</button>
-        <button class="btn" onclick="doAction('causal')">🔗 逻辑验证</button>
-        <button class="btn" onclick="doAction('iterate')">🔄 迭代修复</button>
-        <br><br>
-        <button class="btn" onclick="doAction('scoring')" style="background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7">📊 评分卡</button>
-        <button class="btn" onclick="doAction('trend')" style="background:#e3f2fd;color:#1565c0;border:1px solid #90caf9">📈 趋势图</button>
-        <button class="btn" onclick="doAction('pacing')" style="background:#fff3e0;color:#e65100;border:1px solid #ffcc80">⏱ 节奏检测</button>
-        <button class="btn" onclick="doAction('batch_repair')" style="background:#fce4ec;color:#c62828;border:1px solid #f48fb1">🔧 批量修复</button>
-        <br><br>
-        <button class="btn" onclick="doAction('l3_review')" style="background:#f3e5f5;color:#6a1b9a;border:1px solid #ce93d8">🔬 L3深度审查</button>
-        <button class="btn" onclick="doAction('cron_audit')" style="background:#e0f7fa;color:#006064;border:1px solid #80deea">🕐 Cron审计</button>
-        <button class="btn" onclick="exportTable()">📋 导出</button>
-        <button class="btn" onclick="refresh()">🔃 刷新</button>
-      </div>
-    </div>
+    <div id="output">-- 就绪 --</div>
   </div>
 
   <!-- Sidebar -->
-  <div>
+  <div id="sidebar">
+    <div class="card">
+      <h2>进度</h2>
+      <div class="progress-bg"><div class="progress-fill" id="progress-bar" style="width:0%"></div></div>
+      <div class="stat-row"><span>章节</span><span class="val" id="sb-chapters">-</span></div>
+      <div class="stat-row"><span>总字数</span><span class="val" id="sb-words">-</span></div>
+    </div>
+
+    <div class="card">
+      <h2>审查统计</h2>
+      <div class="stat-row"><span>PASS</span><span class="val" style="color:var(--pass)" id="sb-pass">0</span></div>
+      <div class="stat-row"><span>WARN</span><span class="val" style="color:var(--warn)" id="sb-warn">0</span></div>
+      <div class="stat-row"><span>FAIL</span><span class="val" style="color:var(--fail)" id="sb-fail">0</span></div>
+      <div class="stat-row"><span>待审</span><span class="val" id="sb-pending">0</span></div>
+    </div>
+
+    <div class="card">
+      <h2>最近审计</h2>
+      <div id="sb-audit"><span style="color:var(--muted);font-size:12px">-</span></div>
+    </div>
+
     <div class="card">
       <h2>阻塞项</h2>
-      <div class="blockers" id="blockers-list">-</div>
-    </div>
-    <div class="card" style="padding:12px">
-      <div class="output-panel" id="output"></div>
-      <div class="refresh-time" id="refresh-time"></div>
+      <div id="sb-blockers"><span style="color:var(--pass);font-size:12px">无</span></div>
     </div>
   </div>
-</main>
+</div>
 
 <!-- Chapter Detail Modal -->
-<div class="modal-overlay" id="detail-modal" onclick="if(event.target===this)closeModal()">
-  <div class="modal-box">
+<div id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div id="modal-box">
     <button class="close-btn" onclick="closeModal()">&times;</button>
     <h3 id="modal-title"></h3>
     <div class="meta" id="modal-meta"></div>
-    <div class="field"><div class="field-label">章节目标 Goal</div><div class="field-value" id="modal-goal"></div><textarea id="modal-goal-edit" style="display:none;width:100%;min-height:60px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px;resize:vertical"></textarea></div>
-    <div class="field"><div class="field-label">命题兑现 Premise Must Hit</div><div class="field-value" id="modal-premise"></div><textarea id="modal-premise-edit" style="display:none;width:100%;min-height:60px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px;resize:vertical"></textarea></div>
-    <div class="field"><div class="field-label">禁飞区 Forbidden</div><div class="field-value" id="modal-forbidden"></div><textarea id="modal-forbidden-edit" style="display:none;width:100%;min-height:40px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px;resize:vertical"></textarea></div>
-    <div style="margin-top:16px;display:flex;gap:8px" id="modal-buttons">
-      <button class="btn" id="modal-edit-btn" onclick="startEdit()">✏️ 编辑</button>
-      <button class="btn primary" id="modal-save-btn" onclick="saveEdit()" style="display:none">💾 保存</button>
+    <div class="field">
+      <div class="field-label">章节目标 Goal</div>
+      <div class="field-value" id="modal-goal"></div>
+      <textarea id="modal-goal-edit" style="display:none"></textarea>
+    </div>
+    <div class="field">
+      <div class="field-label">命题兑现 Must Hit</div>
+      <div class="field-value" id="modal-premise"></div>
+      <textarea id="modal-premise-edit" style="display:none"></textarea>
+    </div>
+    <div class="field">
+      <div class="field-label">禁飞区 Forbidden</div>
+      <div class="field-value" id="modal-forbidden"></div>
+      <textarea id="modal-forbidden-edit" style="display:none"></textarea>
+    </div>
+    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
+      <button class="btn" id="modal-edit-btn" onclick="startEdit()">编辑</button>
+      <button class="btn primary" id="modal-save-btn" onclick="saveEdit()" style="display:none">保存</button>
       <button class="btn" id="modal-cancel-btn" onclick="cancelEdit()" style="display:none">取消</button>
-      <span style="font-size:11px;color:var(--muted);margin-left:8px;align-self:center" id="modal-save-status"></span>
+      <span style="font-size: 11px; color: var(--muted);" id="modal-save-status"></span>
     </div>
   </div>
 </div>
@@ -484,224 +508,252 @@ td.goal:hover { white-space: normal; overflow: visible; background: var(--bg); p
 <script>
 const STATE = {};
 let currentVolume = 0;
+let countdown = 30;
+let editingChapter = 0;
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function calcScore(c) {
-  // Simple heuristic: has body=1, has goal=1, has premise_hit=1, reviewed=1, no FAIL=1
   let s = 0;
   if (c.words > 0) s++;
   if (c.goal && c.goal.length > 3 && c.goal !== '未设定') s++;
   if (c.premise_hit && c.premise_hit.length > 3 && c.premise_hit !== '未设定') s++;
   if (c.review_verdict === 'PASS') s += 2;
   else if (c.review_verdict === 'WARN') s++;
-  else if (c.review_verdict === 'FAIL') s += 0;
-  else if (c.words > 0) s++; // written but not reviewed => bonus for having content
-  // Map to grade
-  if (s >= 5) return {grade:'A', color:'#22c55e', bg:'rgba(34,197,94,0.12)'};
-  if (s >= 4) return {grade:'B', color:'#10b981', bg:'rgba(16,185,129,0.10)'};
-  if (s >= 3) return {grade:'C', color:'#eab308', bg:'rgba(234,179,8,0.10)'};
-  if (s >= 2) return {grade:'D', color:'#f97316', bg:'rgba(249,115,22,0.10)'};
-  return {grade:'-', color:'var(--muted)', bg:'transparent'};
+  else if (c.words > 0) s++;
+  if (s >= 5) return {grade:'A', color:'#22c55e'};
+  if (s >= 4) return {grade:'B', color:'#10b981'};
+  if (s >= 3) return {grade:'C', color:'#eab308'};
+  if (s >= 2) return {grade:'D', color:'#f97316'};
+  return {grade:'-', color:'#6b7280'};
 }
 
-// Trend: compare with previous chapter
-function scoreHtml(c) {
-  const sc = calcScore(c);
-  if (sc.grade === '-') return '<span style="color:var(--muted);font-size:11px">-</span>';
-  // Find trend
-  let prev = null;
-  if (c.chapter > 1) {
-    prev = (STATE.chapters||[]).find(x => x.chapter === c.chapter - 1);
+function renderTable(chapters) {
+  return chapters.map(c => {
+    const sc = calcScore(c);
+    const title = c.title || ('第' + c.chapter + '章');
+    const words = (c.words || 0);
+    const status = c.status || 'QUEUE';
+    const statusColor = status.toUpperCase().includes('WRITTEN') ? '#22c55e' :
+                        status.toUpperCase().includes('WARN') ? '#eab308' :
+                        status.toUpperCase().includes('FAIL') ? '#ef4444' : '#6b7280';
+    const statusLabels = {WRITTEN:'已写', PASS:'通过', WARN:'警告', FAIL:'失败', QUEUE:'待写',
+      '待写':'待写', 'NEEDS_WRITING':'待写'};
+    const sl = statusLabels[status] || status;
+    return `<tr onclick="showDetail(${c.chapter})">
+      <td class="ch-col">${c.chapter}</td>
+      <td>${esc(title)}</td>
+      <td class="words-col">${words || '-'}</td>
+      <td class="score-col" style="color:${sc.color}">${sc.grade}</td>
+      <td class="status-col"><span style="color:${statusColor};font-size:11px">${sl}</span></td>
+      <td class="review-col"><button onclick="event.stopPropagation();doAction('review_ch_${c.chapter}')" style="padding:3px 8px;font-size:11px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer">审</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function render(data) {
+  Object.assign(STATE, data);
+  const s = STATE;
+
+  // Header
+  document.getElementById('h-title').textContent = s.title || '未命名项目';
+
+  const la = s.last_audit || {};
+  const ast = la.status || 'NONE';
+  const stColors = {PASS: 'rgba(34,197,94,0.18)', WARN: 'rgba(234,179,8,0.18)',
+                    FAIL: 'rgba(239,68,68,0.18)', NONE: 'rgba(107,114,128,0.12)'};
+  const stText = {PASS: '#22c55e', WARN: '#eab308', FAIL: '#ef4444', NONE: '#8b949e'};
+  const stLabels = {PASS: '审计通过', WARN: '审计警告', FAIL: '审计失败', NONE: '未审计'};
+  const hSt = document.getElementById('h-status');
+  hSt.textContent = stLabels[ast] || ast;
+  hSt.style.background = stColors[ast] || stColors.NONE;
+  hSt.style.color = stText[ast] || stText.NONE;
+
+  document.getElementById('h-written').textContent = s.total_chapters_written || 0;
+  document.getElementById('h-words').textContent = ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
+
+  // Volume selector
+  const totalBookCh = (s.volumes || []).reduce(function(sum, v) { return sum + v.chapters; }, 0) || s.total_chapters_planned;
+  document.getElementById('vol-select').innerHTML = '<option value="0">全部卷</option>' +
+    (s.volumes || []).map(function(v) {
+      return '<option value="' + v.start + '" ' + (currentVolume === v.start ? 'selected' : '') + '>第' + v.label + '卷 ' + v.start + '-' + v.end + '章 ' + (v.theme || '') + '</option>';
+    }).join('');
+
+  // Filter chapters
+  var chapters = s.chapters || [];
+  if (currentVolume > 0) {
+    var vol = (s.volumes || []).find(function(v) { return v.start === currentVolume; });
+    if (vol) chapters = chapters.filter(function(c) { return c.chapter >= vol.start && c.chapter <= vol.end; });
   }
-  const prevSc = prev ? calcScore(prev) : null;
-  let trend = '';
-  if (prevSc && prevSc.grade !== '-') {
-    const grades = ['F','D','C','B','A'];
-    const curIdx = grades.indexOf(sc.grade);
-    const prevIdx = grades.indexOf(prevSc.grade);
-    if (curIdx > prevIdx) trend = ' ↑';
-    else if (curIdx < prevIdx) trend = ' ↓';
-    else trend = ' →';
+  var sf = document.getElementById('status-filter').value;
+  if (sf) {
+    chapters = chapters.filter(function(c) {
+      var ns = (c.status || '').toUpperCase();
+      if (sf === 'written') return ns === 'WRITTEN' || (c.words > 0 && ns !== 'PASS' && ns !== 'WARN' && ns !== 'FAIL');
+      if (sf === 'pass') return c.review_verdict === 'PASS';
+      if (sf === 'warn') return c.review_verdict === 'WARN';
+      if (sf === 'fail') return c.review_verdict === 'FAIL';
+      if (sf === 'queue') return !c.words || (c.words === 0 && !c.review_verdict);
+      return true;
+    });
   }
-  return '<span style="display:inline-block;width:28px;height:22px;line-height:22px;border-radius:4px;text-align:center;font-size:12px;font-weight:700;color:'+sc.color+';background:'+sc.bg+'">'+sc.grade+'</span>'
-       + '<span style="font-size:9px;margin-left:2px;color:var(--muted)">'+trend+'</span>';
-}function normalizeStatus(s) {
-  s = (s || '').toUpperCase();
-  if (['WRITTEN','已写'].includes(s)) return 'written';
-  if (['PASS','通过'].includes(s)) return 'pass';
-  if (['WARN','警告'].includes(s)) return 'warn';
-  if (['FAIL','失败'].includes(s)) return 'fail';
-  if (['NEEDS_WRITING','NEEDS WRITING'].includes(s)) return 'queue';
-  return 'queue'; // QUEUE / 待写 / 待写 / empty
-}
-function statusLabel(s) {
-  const m = {written:'已写', pass:'通过', warn:'警告', fail:'失败', queue:'待写'};
-  return m[normalizeStatus(s)] || '待写';
+
+  // Chapter table
+  document.querySelector('#chapter-table tbody').innerHTML = renderTable(chapters.slice(0, 60));
+
+  // Sidebar: progress
+  var planned = totalBookCh, written = s.total_chapters_written;
+  if (currentVolume > 0) {
+    var cv = (s.volumes || []).find(function(v) { return v.start === currentVolume; });
+    if (cv) { planned = cv.chapters; written = chapters.filter(function(c) { return c.words > 0; }).length; }
+  }
+  var pct = planned > 0 ? Math.round(written / planned * 100) : 0;
+  document.getElementById('progress-bar').style.width = pct + '%';
+  document.getElementById('sb-chapters').textContent = written + ' / ' + planned + ' (' + pct + '%)';
+  document.getElementById('sb-words').textContent = ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
+
+  // Sidebar: review stats
+  var allCh = s.chapters || [];
+  document.getElementById('sb-pass').textContent = allCh.filter(function(c) { return c.review_verdict === 'PASS'; }).length;
+  document.getElementById('sb-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
+  document.getElementById('sb-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
+  document.getElementById('sb-pending').textContent = allCh.filter(function(c) { return c.words > 0 && !c.review_verdict; }).length;
+
+  // Sidebar: recent audits (from chapter review history)
+  var reviewed = allCh.filter(function(c) { return c.reviewed_at; }).sort(function(a, b) {
+    return (b.reviewed_at || '').localeCompare(a.reviewed_at || '');
+  }).slice(0, 8);
+  var audDiv = document.getElementById('sb-audit');
+  if (reviewed.length > 0) {
+    audDiv.innerHTML = reviewed.map(function(c) {
+      var vc = {PASS: '#22c55e', WARN: '#eab308', FAIL: '#ef4444'};
+      return '<div class="audit-entry"><span style="color:' + (vc[c.review_verdict] || 'var(--muted)') + ';font-weight:600">' + (c.review_verdict || '?') + '</span> 第' + c.chapter + '章 <span class="time">' + c.reviewed_at + '</span></div>';
+    }).join('');
+    if (la.summary) {
+      audDiv.innerHTML += '<div class="audit-entry" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;color:var(--muted);font-size:11px">' + esc(la.summary.substring(0, 150)) + '</div>';
+    }
+  } else if (la.summary) {
+    audDiv.innerHTML = '<div style="font-size:12px;color:var(--muted)">' + esc(la.summary.substring(0, 200)) + '</div>';
+  } else {
+    audDiv.innerHTML = '<span style="color:var(--muted);font-size:12px">暂无记录</span>';
+  }
+
+  // Sidebar: blockers
+  var bl = document.getElementById('sb-blockers');
+  if ((s.blockers || []).length > 0) {
+    bl.innerHTML = s.blockers.map(function(b) { return '<div class="blocker-item">' + esc(b) + '</div>'; }).join('');
+  } else {
+    bl.innerHTML = '<span style="color:var(--pass);font-size:12px">无阻塞项</span>';
+  }
+
+  // Refresh indicator
+  document.getElementById('refresh-hint').textContent = countdown + 's 刷新';
 }
 
-// Theme persistence
-const savedTheme = localStorage.getItem('wd-theme') || 'dark';
-document.documentElement.setAttribute('data-theme', savedTheme);
-
-function toggleTheme() {
-  const el = document.documentElement;
-  const next = el.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-  el.setAttribute('data-theme', next);
-  localStorage.setItem('wd-theme', next);
-}
-
+// Actions
 async function refresh() {
   try {
     const r = await fetch('/api/state');
-    const s = await r.json();
-    Object.assign(STATE, s);
-    render(s);
+    render(await r.json());
   } catch(e) { console.error(e); }
 }
 
-function render(s) {
-  document.getElementById('project-title').textContent = s.title || '未命名项目';
-  const totalBookChapters = (s.volumes||[]).reduce((sum, v) => sum + v.chapters, 0) || s.total_chapters_planned;
-  // Progress: per-volume if selected, otherwise whole book
-  let planned, written;
-  if (currentVolume > 0) {
-    const vol = (s.volumes||[]).find(v => v.start === currentVolume);
-    if (vol) {
-      planned = vol.chapters;
-      written = (s.chapters||[]).filter(c => c.chapter >= vol.start && c.chapter <= vol.end && c.words > 0).length;
+async function doAction(action) {
+  const out = document.getElementById('output');
+  out.textContent = '执行中...';
+
+  try {
+    const r = await fetch('/api/action/' + action);
+    const d = await r.json();
+    out.textContent = d.output || d.error || '完成';
+
+    if (action.startsWith('review_ch_')) {
+      const chNum = parseInt(action.replace('review_ch_', ''));
+      const m = (d.output || '').match(/结论[：:]\s*(PASS|WARN|FAIL)/);
+      if (m) {
+        const ch = (STATE.chapters || []).find(c => c.chapter === chNum);
+        if (ch) {
+          const now = new Date();
+          ch.reviewed_at = (now.getMonth()+1).toString().padStart(2,'0') + '-' +
+                           now.getDate().toString().padStart(2,'0') + ' ' +
+                           now.getHours().toString().padStart(2,'0') + ':' +
+                           now.getMinutes().toString().padStart(2,'0');
+          ch.review_verdict = m[1];
+          const issues = [];
+          for (const line of (d.output || '').split('\n')) {
+            const im = line.match(/(?:WARN|FAIL)\s+\[(.+?)\]\s*(?:—|:)?\s*(.+)/);
+            if (im) issues.push('[' + im[1] + '] ' + im[2].trim());
+          }
+          ch.review_issues = issues;
+        }
+        render(STATE);
+      }
+    } else if (d.success) {
+      setTimeout(refresh, 2000);
     }
+  } catch(e) {
+    out.textContent = '错误: ' + e.message;
   }
-  if (!planned) { planned = totalBookChapters; written = s.total_chapters_written; }
-  document.getElementById('ch-progress').textContent = written + '/' + planned + (currentVolume > 0 ? '' : ' (全)');
-  document.getElementById('ch-words').textContent = (s.total_chars/10000).toFixed(1) + '万';
-  const auditStatus = (s.last_audit || {}).status || '-';
-  const auditLabels = {PASS:'通过', WARN:'警告', FAIL:'失败', NONE:'未审'};
-  document.getElementById('ch-status').textContent = auditLabels[auditStatus] || auditStatus;
-
-  // Volume selector
-  const sel = document.getElementById('vol-selector');
-  sel.innerHTML = '<option value="0">全部卷</option>' +
-    (s.volumes||[]).map((v,i) =>
-      `<option value="${v.start}" ${currentVolume===v.start?'selected':''}>第${v.label}卷 ${v.start}-${v.end}章 ${v.theme}</option>`
-    ).join('');
-
-  // Filter chapters by volume
-  let chapters = s.chapters || [];
-  if (currentVolume > 0) {
-    const vol = (s.volumes||[]).find(v => v.start === currentVolume);
-    if (vol) {
-      chapters = chapters.filter(c => c.chapter >= vol.start && c.chapter <= vol.end);
-    }
-  }
-
-  // Status filter
-  const sf = document.getElementById('status-filter').value;
-  if (sf) chapters = chapters.filter(c => normalizeStatus(c.status) === sf);
-
-  // Summary
-  document.getElementById('s-chapters').textContent = written;
-  document.getElementById('s-words').textContent = (s.total_chars/10000).toFixed(1) + '万字';
-  const passN = (s.chapters||[]).filter(c => c.review_verdict === 'PASS').length;
-  const warnN = (s.chapters||[]).filter(c => c.review_verdict === 'WARN').length;
-  const failN = (s.chapters||[]).filter(c => c.review_verdict === 'FAIL').length;
-  const totalReviewed = passN + warnN + failN;
-  document.getElementById('s-pass').innerHTML = totalReviewed + '<span style="font-size:11px;margin-left:4px"><span style="color:var(--pass)">' + passN + '</span>/<span style="color:var(--warn)">' + warnN + '</span>/<span style="color:var(--fail)">' + failN + '</span></span>';
-
-  // Progress bar — use same planned/written from above
-  const pct = planned > 0 ? Math.round(written / planned * 100) : 0;
-  document.getElementById('progress-fill').style.width = pct + '%';
-
-  // Chapter table
-  const tbody = document.querySelector('#chapter-table tbody');
-  tbody.innerHTML = chapters.slice(0, 50).map(c => {
-    const ns = normalizeStatus(c.status);
-    const cls = ns === 'written' ? 'PASS' : ns === 'warn' ? 'WARN' : ns === 'fail' ? 'FAIL' : 'QUEUE';
-    const stLabel = statusLabel(c.status);
-    const title = c.title || ('第' + String(c.chapter).padStart(3,'0') + '章');
-    const w = c.words || 0;
-    const wDisplay = w > 0 ? w.toString() : '-';
-    const mTime = c.mtime || '-';
-    const rvTime = c.reviewed_at || '';
-    const rvVerdict = c.review_verdict || '';
-    const rvIssues = c.review_issues || [];
-    const issuesSummary = rvIssues.slice(0, 2).map(i => i.replace(/^\[.+\]\s*/, '').substring(0, 20)).join(', ') || '';
-    const verdictColors = {PASS:'var(--pass)',WARN:'var(--warn)',FAIL:'var(--fail)'};
-    const verdictStyle = rvVerdict ? `color:${verdictColors[rvVerdict]||'var(--muted)'};font-weight:600` : '';
-    const verdictLabels = {PASS:'通过',WARN:'警告',FAIL:'失败'};
-    return `<tr style="cursor:pointer" onclick="showDetail(${c.chapter})">
-      <td class="ch">${c.chapter}</td>
-      <td>${esc(title)}</td>
-      <td style="font-variant-numeric:tabular-nums;text-align:right;padding-right:16px;font-size:12px;color:var(--muted)">${wDisplay}</td>
-      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${mTime}</td>
-      <td style="font-size:12px;${verdictStyle}">${rvVerdict ? (verdictLabels[rvVerdict]||rvVerdict) : '-'}</td>
-      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${rvTime || '-'}</td>
-      <td style="font-size:11px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rvIssues.join('; '))}">${issuesSummary || '-'}</td>
-      <td class="status"><span class="status-badge ${cls}">${stLabel}</span></td>
-      <td><button class="btn" style="padding:2px 6px;font-size:11px;width:36px" onclick="event.stopPropagation();doAction('review_ch_${c.chapter}')" title="审查第${c.chapter}章">审</button></td>
-    </tr>`;
-  }).join('');
-
-  // Blockers
-  const bl = document.getElementById('blockers-list');
-  if ((s.blockers||[]).length > 0) {
-    bl.innerHTML = s.blockers.map(b => `<span class="blocker-tag">⚠ ${esc(b)}</span>`).join('');
-  } else {
-    bl.innerHTML = '<span style="color:var(--pass);font-size:13px">✅ 无阻塞项</span>';
-  }
-
-  // Time
-  document.getElementById('refresh-time').textContent = '更新 ' + new Date().toLocaleTimeString();
 }
-
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function switchVolume() {
-  currentVolume = parseInt(document.getElementById('vol-selector').value) || 0;
-  render(STATE);
+  currentVolume = parseInt(document.getElementById('vol-select').value) || 0;
+  applyFilter();
 }
 
-function closeModal() { document.getElementById('detail-modal').classList.remove('show'); }
+function applyFilter() { render(STATE); }
 
-let editingChapter = 0;
-
+// Modal
 function showDetail(chNum) {
-  const ch = (STATE.chapters||[]).find(c => c.chapter === chNum);
+  const ch = (STATE.chapters || []).find(c => c.chapter === chNum);
   if (!ch) return;
   editingChapter = chNum;
   document.getElementById('modal-title').textContent = '第' + ch.chapter + '章 ' + (ch.title || '');
   document.getElementById('modal-meta').textContent =
-    '状态: ' + statusLabel(ch.status) + ' | 字数: ' + ((ch.words||0)/1000).toFixed(1) + 'k' +
-    (ch.reviewed_at ? ' | 最后修改: ' + ch.reviewed_at : '');
+    '字数: ' + ((ch.words || 0) / 1000).toFixed(1) + 'k' +
+    ' | 审查: ' + (ch.review_verdict || '未审') +
+    (ch.reviewed_at ? ' | ' + ch.reviewed_at : '');
   renderReadOnly(ch);
-  document.getElementById('detail-modal').classList.add('show');
+  document.getElementById('modal-overlay').classList.add('show');
 }
 
+function closeModal() { document.getElementById('modal-overlay').classList.remove('show'); }
+
 function renderReadOnly(ch) {
-  document.getElementById('modal-goal').style.display = 'block'; document.getElementById('modal-goal-edit').style.display = 'none';
-  document.getElementById('modal-premise').style.display = 'block'; document.getElementById('modal-premise-edit').style.display = 'none';
-  document.getElementById('modal-forbidden').style.display = 'block'; document.getElementById('modal-forbidden-edit').style.display = 'none';
+  document.getElementById('modal-goal').style.display = 'block';
+  document.getElementById('modal-goal-edit').style.display = 'none';
+  document.getElementById('modal-premise').style.display = 'block';
+  document.getElementById('modal-premise-edit').style.display = 'none';
+  document.getElementById('modal-forbidden').style.display = 'block';
+  document.getElementById('modal-forbidden-edit').style.display = 'none';
   document.getElementById('modal-goal').textContent = ch.goal || '未设定';
   document.getElementById('modal-premise').textContent = ch.premise_hit || '未设定';
   document.getElementById('modal-forbidden').textContent = ch.forbidden || '无';
   document.getElementById('modal-edit-btn').style.display = 'inline-block';
-  document.getElementById('modal-save-btn').style.display = 'none'; document.getElementById('modal-cancel-btn').style.display = 'none';
+  document.getElementById('modal-save-btn').style.display = 'none';
+  document.getElementById('modal-cancel-btn').style.display = 'none';
   document.getElementById('modal-save-status').textContent = '';
 }
 
 function startEdit() {
-  const ch = (STATE.chapters||[]).find(c => c.chapter === editingChapter);
+  const ch = (STATE.chapters || []).find(c => c.chapter === editingChapter);
   if (!ch) return;
-  document.getElementById('modal-goal').style.display = 'none'; document.getElementById('modal-goal-edit').style.display = 'block';
+  document.getElementById('modal-goal').style.display = 'none';
+  document.getElementById('modal-goal-edit').style.display = 'block';
   document.getElementById('modal-goal-edit').value = ch.goal || '';
-  document.getElementById('modal-premise').style.display = 'none'; document.getElementById('modal-premise-edit').style.display = 'block';
+  document.getElementById('modal-premise').style.display = 'none';
+  document.getElementById('modal-premise-edit').style.display = 'block';
   document.getElementById('modal-premise-edit').value = ch.premise_hit || '';
-  document.getElementById('modal-forbidden').style.display = 'none'; document.getElementById('modal-forbidden-edit').style.display = 'block';
+  document.getElementById('modal-forbidden').style.display = 'none';
+  document.getElementById('modal-forbidden-edit').style.display = 'block';
   document.getElementById('modal-forbidden-edit').value = ch.forbidden || '';
   document.getElementById('modal-edit-btn').style.display = 'none';
-  document.getElementById('modal-save-btn').style.display = 'inline-block'; document.getElementById('modal-cancel-btn').style.display = 'inline-block';
+  document.getElementById('modal-save-btn').style.display = 'inline-block';
+  document.getElementById('modal-cancel-btn').style.display = 'inline-block';
 }
 
 function cancelEdit() {
-  const ch = (STATE.chapters||[]).find(c => c.chapter === editingChapter);
+  const ch = (STATE.chapters || []).find(c => c.chapter === editingChapter);
   if (ch) renderReadOnly(ch);
 }
 
@@ -709,8 +761,8 @@ async function saveEdit() {
   const goal = document.getElementById('modal-goal-edit').value;
   const premise = document.getElementById('modal-premise-edit').value;
   const forbidden = document.getElementById('modal-forbidden-edit').value;
-  const statusEl = document.getElementById('modal-save-status');
-  statusEl.textContent = '保存中...';
+  const st = document.getElementById('modal-save-status');
+  st.textContent = '保存中...';
   try {
     const r = await fetch('/api/save_chapter', {
       method: 'POST',
@@ -719,106 +771,64 @@ async function saveEdit() {
     });
     const d = await r.json();
     if (d.success) {
-      const ch = (STATE.chapters||[]).find(c => c.chapter === editingChapter);
+      const ch = (STATE.chapters || []).find(c => c.chapter === editingChapter);
       if (ch) { ch.goal = goal; ch.premise_hit = premise; ch.forbidden = forbidden; }
       renderReadOnly(ch || {});
       refresh();
-      statusEl.textContent = '✅ 已保存';
-      setTimeout(() => { statusEl.textContent = ''; }, 2000);
+      st.textContent = '已保存';
+      setTimeout(function() { st.textContent = ''; }, 2000);
     } else {
-      statusEl.textContent = '❌ ' + (d.error || '失败');
+      st.textContent = '失败: ' + (d.error || '');
     }
   } catch(e) {
-    statusEl.textContent = '❌ ' + e.message;
+    st.textContent = '错误: ' + e.message;
   }
 }
 
 function exportTable() {
-  const chapters = STATE.chapters || [];
-  const rows = [['章','标题','字数','Goal','Premise Hit','状态']];
-  for (const c of chapters.slice(0, 80)) {
+  var chapters = (STATE.chapters || []).filter(function(c) {
     if (currentVolume > 0) {
-      const vol = (STATE.volumes||[]).find(v => v.start === currentVolume);
-      if (vol && (c.chapter < vol.start || c.chapter > vol.end)) continue;
+      var vol = (STATE.volumes || []).find(function(v) { return v.start === currentVolume; });
+      if (vol && (c.chapter < vol.start || c.chapter > vol.end)) return false;
     }
-    rows.push([c.chapter, c.title||'', ((c.words||0)/1000).toFixed(1)+'k', (c.goal||'').substring(0,50), (c.premise_hit||'').substring(0,50), statusLabel(c.status)]);
-  }
-  const text = rows.map(r => r.join('\t')).join('\n');
-  navigator.clipboard.writeText(text).then(() => {
-    const btn = event.target;
-    const orig = btn.textContent;
-    btn.textContent = '✅ 已复制';
-    setTimeout(() => btn.textContent = orig, 1500);
+    return true;
   });
+  var rows = [['章','标题','字数','Goal','Premise Hit','状态']];
+  for (var i = 0; i < chapters.length && i < 80; i++) {
+    var c = chapters[i];
+    rows.push([c.chapter, c.title||'', ((c.words||0)/1000).toFixed(1)+'k',
+               (c.goal||'').substring(0,50), (c.premise_hit||'').substring(0,50),
+               c.status||'QUEUE']);
+  }
+  var text = rows.map(function(r) { return r.join('\t'); }).join('\n');
+  navigator.clipboard.writeText(text).catch(function() {});
 }
 
-async function doAction(action) {
-  const btn = event.target;
-  const orig = btn.textContent;
-  btn.disabled = true;
-  btn.style.width = btn.offsetWidth + 'px';
-  btn.innerHTML = '<span class="spinner"></span>';
-
-  const out = document.getElementById('output');
-  out.textContent = '执行中...';
-
-  try {
-    const r = await fetch('/api/action/' + action);
-    const d = await r.json();
-    out.textContent = (d.output || d.error || 'Done.');
-
-    // Instant update: refresh the table row for review actions
-    if (action.startsWith('review_ch_')) {
-      const chNum = action.replace('review_ch_', '');
-      const statusMatch = (d.output || '').match(/结论[：:]\s*(PASS|WARN|FAIL)/);
-      if (statusMatch) {
-        const ch = (STATE.chapters||[]).find(c => c.chapter === parseInt(chNum));
-        if (ch) {
-          ch.reviewed_at = new Date().toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-          ch.review_verdict = statusMatch[1];
-          // Extract review issues from output
-          const issues = [];
-          const lines = (d.output || '').split('\n');
-          for (const line of lines) {
-            const m = line.match(/(?:WARN|FAIL)\s+\[(.+?)\]\s*(?:—|:)?\s*(.+)/);
-            if (m) issues.push('[' + m[1] + '] ' + m[2].trim());
-          }
-          ch.review_issues = issues;
-        }
-        render(STATE);
-      }
-    }
-
-    if (action.startsWith('review_ch_')) {
-      // Already handled by instant update above, skip refresh
-    } else if (d.success) {
-      setTimeout(refresh, 2000);
-    }
-  } catch(e) {
-    out.textContent = 'Error: ' + e.message;
-  }
-  btn.disabled = false;
-  btn.textContent = orig;
-  btn.style.width = '';
-}
-
-// Auto-refresh every 30 seconds
-let refreshCountdown = 30;
-setInterval(() => {
-  refreshCountdown--;
-  if (refreshCountdown <= 0) {
-    refresh();
-    refreshCountdown = 30;
-  }
-  document.getElementById('auto-refresh-label').textContent = refreshCountdown + 's 自动刷新';
+// Countdown tick
+setInterval(function() {
+  countdown--;
+  if (countdown <= 0) countdown = 30;
+  var el = document.getElementById('refresh-hint');
+  if (el) el.textContent = countdown + 's 刷新';
 }, 1000);
 
-// Initialize after DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => refresh());
-} else {
-  refresh();
+// Init on DOMContentLoaded (not direct call)
+async function init() {
+  try {
+    const r = await fetch('/api/state');
+    const data = await r.json();
+    countdown = 30;
+    render(data);
+    setInterval(async function() {
+      try {
+        countdown = 30;
+        const r2 = await fetch('/api/state');
+        render(await r2.json());
+      } catch(e) { console.error(e); }
+    }, 30000);
+  } catch(e) { console.error(e); }
 }
+document.addEventListener('DOMContentLoaded', init);
 </script>
 </body>
 </html>"""
