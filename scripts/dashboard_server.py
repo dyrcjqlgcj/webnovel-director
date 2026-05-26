@@ -405,8 +405,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
     <div class="progress-bg" style="height:4px;width:180px"><div class="progress-fill" id="header-progress" style="width:0%"></div></div>
     <span style="font-size:11px;color:var(--muted);margin-left:8px;white-space:nowrap" id="header-progress-text">-</span>
   </div>
-  <span class="refresh-indicator" style="margin-left: 14px" id="refresh-hint"></span>
-  <button onclick="toggleTheme()" style="margin-left:12px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px" title="切换主题">&#9788;</button>
+  <div class="header-stats">
+    <span class="header-stat-item">&#9888; <b id="h-warn">0</b></span>
+    <span class="header-stat-item">&#10060; <b id="h-fail">0</b></span>
+    <span class="header-stat-item">&#128221; <b id="h-canwrite">-</b></span>
+  </div>
+  <span class="refresh-indicator" style="margin-left: 10px" id="refresh-hint"></span>
+  <button onclick="toggleTheme()" style="margin-left:10px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px" title="切换主题">&#9788;</button>
 </header>
 
 <div id="main">
@@ -615,6 +620,11 @@ function render(data) {
   var pct = planned > 0 ? Math.round(written / planned * 100) : 0;
   document.getElementById('header-progress').style.width = pct + '%';
   document.getElementById('header-progress-text').textContent = written + '/' + planned + ' (' + pct + '%) ' + ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
+
+  // Header stats
+  document.getElementById('h-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
+  document.getElementById('h-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
+  document.getElementById('h-canwrite').textContent = s.can_write ? '可写' : '锁定';
 
   // Sidebar: review stats
   var allCh = s.chapters || [];
