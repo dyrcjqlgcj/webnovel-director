@@ -594,7 +594,7 @@ function render(data) {
   if (sf) {
     chapters = chapters.filter(function(c) {
       var ns = (c.status || '').toUpperCase();
-      if (sf === 'written') return ns === 'WRITTEN' || (c.words > 0 && ns !== 'PASS' && ns !== 'WARN' && ns !== 'FAIL');
+      if (sf === 'written') return c.words > 0 && !c.review_verdict;
       if (sf === 'pass') return c.review_verdict === 'PASS';
       if (sf === 'warn') return c.review_verdict === 'WARN';
       if (sf === 'fail') return c.review_verdict === 'FAIL';
