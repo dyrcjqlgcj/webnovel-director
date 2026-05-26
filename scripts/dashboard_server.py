@@ -337,6 +337,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
   letter-spacing: 0.5px; position: sticky; top: 0; background: var(--card); z-index: 1; }
 #chapter-table td { padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
 #chapter-table tbody tr { cursor: pointer; transition: background 0.1s; }
+
+.vol-band-even { background: rgba(255,255,255,0.02); }
+.vol-band-odd { background: rgba(99,102,241,0.04); }
 #chapter-table tbody tr:hover { background: rgba(255,255,255,0.03); }
 #chapter-table .ch-col { font-weight: 600; width: 50px; }
 #chapter-table .words-col { text-align: right; font-variant-numeric: tabular-nums;
@@ -405,6 +408,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
     <div class="progress-bg" style="height:4px;width:180px"><div class="progress-fill" id="header-progress" style="width:0%"></div></div>
     <span style="font-size:11px;color:var(--muted);margin-left:8px;white-space:nowrap" id="header-progress-text">-</span>
   </div>
+  <span id="h-summary" style="font-size:10px;color:var(--muted);margin-left:12px;white-space:nowrap"></span>
   <div class="header-stats">
     <span class="header-stat-item">&#9888; <b id="h-warn">0</b></span>
     <span class="header-stat-item">&#10060; <b id="h-fail">0</b></span>
@@ -443,7 +447,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
         <table id="chapter-table">
           <thead><tr>
             <th class="ch-col">#</th>
-            <th>标题</th>
+            <th style="max-width:200px">标题</th>
             <th class="words-col">字数</th>
             <th class="score-col">评分</th>
             <th class="time-col">修改</th>
@@ -541,17 +545,25 @@ function calcScore(c) {
   return {grade:'', color:'#6b7280'};
 }
 
-function renderTable(chapters) {
+function renderTable(chapters, volumes) {
   return chapters.map(c => {
     const sc = calcScore(c);
     const title = c.title || ('第' + c.chapter + '章');
     const words = (c.words || 0);
+    // Volume band
+    var volIdx = -1;
+    if (volumes) {
+      for (var vi = 0; vi < volumes.length; vi++) {
+        if (c.chapter >= volumes[vi].start && c.chapter <= volumes[vi].end) { volIdx = vi; break; }
+      }
+    }
+    var bandClass = volIdx >= 0 ? (volIdx % 2 === 0 ? 'vol-band-even' : 'vol-band-odd') : '';
     const mtime = c.mtime || '-';
     const rvVerdict = c.review_verdict || '';
     const rvTime = c.reviewed_at || '-';
     const verdictColors = {PASS:'#22c55e',WARN:'#eab308',FAIL:'#ef4444'};
     const vLabel = {PASS:'通过',WARN:'警告',FAIL:'失败'};
-    return `<tr onclick="showDetail(${c.chapter})">
+    return `<tr class="${bandClass}" onclick="showDetail(${c.chapter})">
       <td class="ch-col">${c.chapter}</td>
       <td>${esc(title)}</td>
       <td class="words-col">${words || '-'}</td>
@@ -609,7 +621,7 @@ function render(data) {
   }
 
   // Chapter table
-  document.querySelector('#chapter-table tbody').innerHTML = renderTable(chapters.slice(0, 60));
+  document.querySelector('#chapter-table tbody').innerHTML = renderTable(chapters.slice(0, 60), s.volumes);
 
   // Header progress bar
   var planned = totalBookCh, written = s.total_chapters_written;
@@ -620,6 +632,14 @@ function render(data) {
   var pct = planned > 0 ? Math.round(written / planned * 100) : 0;
   document.getElementById('header-progress').style.width = pct + '%';
   document.getElementById('header-progress-text').textContent = '已写' + written + '章/共' + planned + '章 (' + pct + '%) ' + ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
+
+  // Summary row
+  var totalWords = allCh.reduce(function(sum, c) { return sum + (c.words || 0); }, 0);
+  var reviewed = allCh.filter(function(c) { return c.review_verdict; }).length;
+  var passRate = reviewed > 0 ? Math.round(allCh.filter(function(c) { return c.review_verdict === 'PASS'; }).length / reviewed * 100) : 0;
+  var volLabels = (s.volumes || []).map(function(v) { return '第' + v.label + '卷'; });
+  var avgWords = written > 0 ? Math.round(totalWords / written) : 0;
+  document.getElementById('h-summary').textContent = '日均 ' + avgWords + '字 | 审查 ' + reviewed + '/' + written + ' (' + passRate + '%) | ' + (volLabels.length > 0 ? volLabels.slice(0, 2).join('·') + (volLabels.length > 2 ? '…' : '') : '');
 
   // Sidebar: review stats
   var allCh = s.chapters || [];
