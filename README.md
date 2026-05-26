@@ -112,7 +112,12 @@
 | `scripts\sync_inkos_state.py` | inkos 项目状态同步 | 否 |
 | `scripts\test_smoke.py` | 全链路冒烟测试 | 否 |
 | `scripts\dashboard_server.py` | Web 仪表盘：项目状态/审查色块/一键操作 | 否 |
-| `scripts\trend_chart.py` | 章节趋势图表：字数 × 审查分 × 偏离度 | 否 |
+| `scripts\concept_gate_import.py` | story-* skill 输出直通概念验证 | 否 |
+| `scripts\cron_auditor.py` | gateway cron 任务审计 | 否 |
+| `scripts\migrate_project.py` | inkos → webnovel-director 一键迁移 | 否 |
+| `scripts\project_manager.py` | 多书管理（list/doctor/switch/new） | 否 |
+| `scripts\scoring_card.py` | A~F 五档评分 + 趋势箭头 | 否 |
+| `scripts\trend_chart.py` | ASCII 三线趋势图（字数/审查分/偏离度） | 否 |
 
 > 安全边界：以上全部脚本**不写正文**。正文只能由 writer 子系统在闸门通过后生成。
 

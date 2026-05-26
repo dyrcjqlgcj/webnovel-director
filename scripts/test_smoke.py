@@ -129,12 +129,15 @@ def test():
         # 7. build_task_package
         print("[7/7] build_task_package...")
         rc, out = run("build_task_package.py", str(book_dir), "--chapter", "1")
-        if rc == 0:
+        if rc == 0 and "task_package" in out.lower():
             print("  OK — task package generated")
             passed += 1
+        elif rc != 0:
+            print(f"  FAIL: exit code {rc} — {out[:200]}")
+            failed += 1
         else:
-            print(f"  Status: {rc} (expected — may need chapter status update)")
-            passed += 1  # Expected — queue status is "待写" not "pass/ready"
+            print(f"  WARN: script exited 0 but no task_package found — {out[:100]}")
+            passed += 1  # May be valid if canWrite=false, but not a fatal smoke failure
 
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
