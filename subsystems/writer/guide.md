@@ -13,6 +13,7 @@ webnovel-director 的写作执行子系统。接收 execution-dispatch 派发的
 
 ### 准备层（每章写作前）
 
+0. **细纲储备检查**（强制）：运行 `python scripts\extend_outline.py <book_dir> --auto`，若当前章之后细纲不足 5 章，自动调用 LLM 生成新细纲并写入 chapter_queue。储备不足时禁止跳过——没有细纲不写正文。
 1. **状态筛选**：从 `templates\current_state.md`、`templates\particle_ledger.md`、`templates\resource_ledger.md` 筛选本章涉及的状态和资源。
 2. **模块召回**：① 本章目标情绪词？② 借鉴哪个参考文件的哪个技法？③ 用在哪些段落？
 3. **指令确认**：综合细纲 + 状态 + 模块召回，用一句话概括本章写作意图。

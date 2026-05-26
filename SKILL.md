@@ -44,6 +44,8 @@ description: |
 | 检查转场/对白/章末 | `modules/transition-module/` + `modules/consistency-module/` | — |
 | 去AI味 | `subsystems/polisher/` | polisher |
 | 自动写作/cron | `references/cron-interface.md` | writer + reviewer |
+| 扩展细纲储备 | `scripts\extend_outline.py` | — |
+| 检查细纲是否充足 | `scripts\extend_outline.py --auto` | — |
 
 ## 标准工作流
 
