@@ -310,6 +310,66 @@ def rename_and_split(book_dir: Path, ch_num: int, points: list[int]):
         print(f"  → 第{ch_num + i:02d}章 {base}{suffix} ({chars}字) [{status}]")
 
 
+
+def update_volume_map(book_dir: Path, shifts: list[tuple[int, int]]):
+    """更新 volume_map.md 的卷章号范围以匹配拆分后编号。
+    shifts: [(split_chapter, shift_amount), ...]
+    例如: 第11章拆成3段 → shift=2，后续所有卷章号后移2。
+    """
+    vm_paths = [
+        book_dir / "director" / "volume_map.md",
+        book_dir / "story" / "outline" / "volume_map.md",
+    ]
+    for vm_path in vm_paths:
+        if not vm_path.exists():
+            continue
+        text = read_text(vm_path)
+        lines = text.splitlines()
+        new_lines = []
+        applied = 0
+
+        for line in lines:
+            s = line.strip()
+            # Volume table: | 卷 | 1-99 | ... |
+            m = re.match(r"\|\s*(.+?)\s*\|\s*(\d+)\s*[-–]\s*(\d+)\s*\|", s)
+            if m:
+                v_start = int(m.group(2))
+                v_end = int(m.group(3))
+                for split_ch, shift_amt in sorted(shifts):
+                    if split_ch >= v_start and split_ch <= v_end:
+                        v_end += shift_amt
+                    elif split_ch < v_start:
+                        v_start += shift_amt
+                        v_end += shift_amt
+                new_line = re.sub(r"(\d+)\s*[-–]\s*(\d+)", f"{v_start}-{v_end}", line)
+                new_lines.append(new_line)
+                applied += 1
+                continue
+
+            # Pace table: | 1-20 | ... |
+            m2 = re.match(r"\|\s*(\d+)\s*[-–]\s*(\d+)\s*\|", s)
+            if m2:
+                p_start = int(m2.group(1))
+                p_end = int(m2.group(2))
+                for split_ch, shift_amt in sorted(shifts):
+                    if split_ch >= p_start and split_ch <= p_end:
+                        p_end += shift_amt
+                    elif split_ch < p_start:
+                        p_start += shift_amt
+                        p_end += shift_amt
+                new_line = re.sub(r"(\d+)\s*[-–]\s*(\d+)", f"{p_start}-{p_end}", line)
+                new_lines.append(new_line)
+                applied += 1
+                continue
+
+            new_lines.append(line)
+
+        write_text(vm_path, "\n".join(new_lines) + "\n")
+        if applied > 0:
+            print(f"  >> volume_map 已更新: {vm_path.name} ({applied} 行)")
+    return
+
+
 def run(book_dir: Path, split: bool = False):
     print(f"[check_wordcount] 阈值={MAX_WORDS}字, 下限={MIN_SEGMENT}字, 模式={'拆分' if split else '检查'}")
     print()
@@ -358,6 +418,8 @@ def run(book_dir: Path, split: bool = False):
         print(f"\n  第 {ch} 章 → {len(points) + 1} 段")
         rename_and_split(book_dir, ch, points)
 
+    # 更新 volume_map
+    update_volume_map(book_dir, [(ch, len(pts)) for ch, pts in sorted(to_split, reverse=True)])
     # 重建 queue
     rebuild_queue(book_dir)
     print(f"\n>> chapter_queue 已更新")
