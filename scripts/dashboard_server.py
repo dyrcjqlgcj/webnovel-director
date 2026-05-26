@@ -434,16 +434,6 @@ td.goal:hover { white-space: normal; overflow: visible; background: var(--bg); p
       <div class="actions">
         <button class="btn primary" onclick="doAction('doctor')">🔍 一键体检</button>
         <button class="btn" onclick="doAction('review')">📋 大纲审查</button>
-        <button class="btn" onclick="doAction('causal')">🔗 逻辑验证</button>
-        <button class="btn" onclick="doAction('iterate')">🔄 迭代修复</button>
-        <br><br>
-        <button class="btn" onclick="doAction('scoring')" style="background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7">📊 评分卡</button>
-        <button class="btn" onclick="doAction('trend')" style="background:#e3f2fd;color:#1565c0;border:1px solid #90caf9">📈 趋势图</button>
-        <button class="btn" onclick="doAction('pacing')" style="background:#fff3e0;color:#e65100;border:1px solid #ffcc80">⏱ 节奏检测</button>
-        <button class="btn" onclick="doAction('batch_repair')" style="background:#fce4ec;color:#c62828;border:1px solid #f48fb1">🔧 批量修复</button>
-        <br><br>
-        <button class="btn" onclick="doAction('l3_review')" style="background:#f3e5f5;color:#6a1b9a;border:1px solid #ce93d8">🔬 L3深度审查</button>
-        <button class="btn" onclick="doAction('cron_audit')" style="background:#e0f7fa;color:#006064;border:1px solid #80deea">🕐 Cron审计</button>
         <button class="btn" onclick="exportTable()">📋 导出</button>
         <button class="btn" onclick="refresh()">🔃 刷新</button>
       </div>
@@ -494,7 +484,6 @@ function calcScore(c) {
   if (c.review_verdict === 'PASS') s += 2;
   else if (c.review_verdict === 'WARN') s++;
   else if (c.review_verdict === 'FAIL') s += 0;
-  else if (c.words > 0) s++; // written but not reviewed => bonus for having content
   // Map to grade
   if (s >= 5) return {grade:'A', color:'#22c55e', bg:'rgba(34,197,94,0.12)'};
   if (s >= 4) return {grade:'B', color:'#10b981', bg:'rgba(16,185,129,0.10)'};
@@ -619,8 +608,7 @@ function render(s) {
     const title = c.title || ('第' + String(c.chapter).padStart(3,'0') + '章');
     const w = c.words || 0;
     const wDisplay = w > 0 ? w.toString() : '-';
-    const mTime = c.mtime || '-';
-    const rvTime = c.reviewed_at || '';
+        const rvTime = c.reviewed_at || '';
     const rvVerdict = c.review_verdict || '';
     const rvIssues = c.review_issues || [];
     const issuesSummary = rvIssues.slice(0, 2).map(i => i.replace(/^\[.+\]\s*/, '').substring(0, 20)).join(', ') || '';
@@ -631,7 +619,7 @@ function render(s) {
       <td class="ch">${c.chapter}</td>
       <td>${esc(title)}</td>
       <td style="font-variant-numeric:tabular-nums;text-align:right;padding-right:16px;font-size:12px;color:var(--muted)">${wDisplay}</td>
-      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${mTime}</td>
+      <td style="text-align:center">${scoreHtml(c)}</td>
       <td style="font-size:12px;${verdictStyle}">${rvVerdict ? (verdictLabels[rvVerdict]||rvVerdict) : '-'}</td>
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${rvTime || '-'}</td>
       <td style="font-size:11px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(rvIssues.join('; '))}">${issuesSummary || '-'}</td>
