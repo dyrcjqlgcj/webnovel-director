@@ -347,7 +347,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
   font-size: 12px; color: var(--muted); width: 80px; }
 #chapter-table .score-col { text-align: center; font-weight: 700; width: 44px; }
 #chapter-table .time-col { width: 80px; font-size: 11px; color: var(--muted); white-space: nowrap; }
-#chapter-table .status-col { width: 55px; }
+#chapter-table .status-col { width: 55px; font-size: 12px; font-weight: 600; }
 #chapter-table .review-col { width: 36px; text-align: center; }
 
 /* Filter row */
@@ -575,9 +575,9 @@ function renderTable(chapters, volumes) {
       <td class="title-col" title="${esc(title)}">${esc(title)}</td>
       <td class="words-col">${words || '-'}</td>
       <td class="score-col" style="color:${sc.color}">${sc.grade}</td>
-      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${mtime}</td>
-      <td style="font-size:12px;font-weight:600;color:${verdictColors[rvVerdict]||'var(--muted)'}">${rvVerdict ? (vLabel[rvVerdict]||rvVerdict) : (words > 0 ? '已写' : '-')}</td>
-      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${rvTime}</td>
+      <td class="time-col">${mtime}</td>
+      <td class="status-col" style="color:${verdictColors[rvVerdict]||'var(--muted)'}">${rvVerdict ? (vLabel[rvVerdict]||rvVerdict) : (words > 0 ? '已写' : '-')}</td>
+      <td class="time-col">${rvTime}</td>
       <td class="review-col"><button onclick="event.stopPropagation();doAction('review_ch_${c.chapter}')" style="padding:3px 8px;font-size:11px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer">审</button></td>
     </tr>`;
   }).join('');
