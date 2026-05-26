@@ -325,7 +325,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* Table */
-#table-wrap { max-height: 600px; overflow-y: auto; border-radius: 6px; }
+#table-wrap { max-height: calc(100vh - 150px); overflow-y: auto; border-radius: 6px; }
 #chapter-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 #chapter-table th { text-align: left; padding: 8px 12px; color: var(--muted);
   font-weight: 500; border-bottom: 2px solid var(--border); font-size: 11px;
@@ -459,11 +459,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
     </div>
 
     <div class="card">
-      <h2>阻塞项</h2>
-      <div id="sb-blockers"><span style="color:var(--pass);font-size:12px">无</span></div>
+      <h2>最近审计</h2>
+      <div id="sb-audit"><span style="color:var(--muted);font-size:12px">--</span></div>
     </div>
 
-    <div id="output">-- 就绪 --</div>
+    <div id="output" style="height:500px;overflow-y:auto">-- 就绪 --</div>
   </div>
 </div>
 
@@ -616,6 +616,19 @@ function render(data) {
   document.getElementById('sb-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
   document.getElementById('sb-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
   document.getElementById('sb-pending').textContent = allCh.filter(function(c) { return c.words > 0 && !c.review_verdict; }).length;
+
+  // Sidebar: recent audits
+  var reviewed = allCh.filter(function(c) { return c.reviewed_at; }).sort(function(a, b) {
+    return (b.reviewed_at || '').localeCompare(a.reviewed_at || '');
+  }).slice(0, 5);
+  var audDiv = document.getElementById('sb-audit');
+  if (reviewed.length > 0) {
+    audDiv.innerHTML = reviewed.map(function(c) {
+      return '<div style="font-size:12px;padding:2px 0">第' + c.chapter + '章 <span style="color:var(--muted)">' + (c.review_verdict || '?') + '</span></div>';
+    }).join('');
+  } else {
+    audDiv.innerHTML = '<span style="color:var(--muted);font-size:12px">暂无</span>';
+  }
 
   // Sidebar: blockers
   var bl = document.getElementById('sb-blockers');
