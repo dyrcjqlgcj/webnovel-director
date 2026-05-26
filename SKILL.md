@@ -89,25 +89,26 @@ description: |
 | 脚本 | 用途 | 是否写正文 |
 |---|---|---|
 | `scripts\concept_gate.py` | 六维概念验证打分 | 否 |
-| `scripts/init_project.py` | 初始化 director/truth 骨架 | 否 |
-| `scripts/director_doctor.py` | 一键体检项目状态/队列/闸门 | 否 |
-| `scripts/extract_premise.py` | 从 story 文件自动生成 premise 初稿 | 否 |
+| `scripts\init_project.py` | 初始化 director/truth 骨架 | 否 |
+| `scripts\director_doctor.py` | 一键体检项目状态/队列/闸门 | 否 |
+| `scripts\extract_premise.py` | 从 story 文件自动生成 premise 初稿 | 否 |
 | `scripts\outline_gate_review.py` | 逐章六维审查报告 | 否 |
 | `scripts\outline_causal_check.py` | 大纲逻辑验证：因果链/爽点密度/角色弧线/力量曲线 | 否 |
 | `scripts\outline_iterate.py` | 迭代修复：检查→分组→LLM修复→重查→循环至通过 | 否 |
-| `scripts/build_task_package.py` | 在闸门通过后生成章节任务包 | 否 |
-| `scripts/audit_chapters.py` | 快速章节关键词审计 | 否 |
-| `scripts/review_chapter.py` | 正文→任务包对照 L1 审查报告 | 否 |
-| `scripts/review_parallel.py` | 4 子 Agent 并行审查 + 交叉矛盾检测 | 否 |
-| `scripts/post_writeback.py` | 写后根据审查结果回写 director/truth | 否 |
-| `scripts/repair_plan.py` | FAIL/WARN 自动分级 R0-R4 + 修复步骤 | 否 |
-| `scripts/director_meta_iterate.py` | webnovel-director 自检+迭代修复引擎 | 否 |
-| `scripts/validate_relationships.py` | 检查关系图因果边完整性 | 否 |
-| `scripts/check_cron_prompt.py` | 检查 cron prompt 是否绕过 director | 否 |
-| `scripts/generate_outline_queue.py` | 从卷纲自动生成 chapter_queue 骨架 | 否 |
-| `scripts/validate_pacing.py` | 检查细纲进度是否与卷纲 pace 对齐（过快/过慢检测） | 否 |
-| `scripts/test_smoke.py` | 全链路冒烟测试 | 否 |
-| `scripts/dashboard_server.py` | Web 仪表盘服务器：项目状态/审查色块/一键操作 | 否 |
+| `scripts\build_task_package.py` | 在闸门通过后生成章节任务包 | 否 |
+| `scripts\audit_chapters.py` | 快速章节关键词审计 | 否 |
+| `scripts\review_chapter.py` | 正文→任务包对照 L1 审查报告 | 否 |
+| `scripts\review_parallel.py` | 4 子 Agent 并行审查 + 交叉矛盾检测 | 否 |
+| `scripts\post_writeback.py` | 写后根据审查结果回写 director/truth | 否 |
+| `scripts\repair_plan.py` | FAIL/WARN 自动分级 R0-R4 + 修复步骤 | 否 |
+| `scripts\sync_inkos_state.py` | 同步 inkos 风格项目到 director state | 否 |
+| `scripts\director_meta_iterate.py` | webnovel-director 自检+迭代修复引擎 | 否 |
+| `scripts\validate_relationships.py` | 检查关系图因果边完整性 | 否 |
+| `scripts\check_cron_prompt.py` | 检查 cron prompt 是否绕过 director | 否 |
+| `scripts\generate_outline_queue.py` | 从卷纲自动生成 chapter_queue 骨架 | 否 |
+| `scripts\validate_pacing.py` | 检查细纲进度是否与卷纲 pace 对齐（过快/过慢检测） | 否 |
+| `scripts\test_smoke.py` | 全链路冒烟测试 | 否 |
+| `scripts\dashboard_server.py` | Web 仪表盘服务器：项目状态/审查色块/一键操作 | 否 |
 
 ## 主要参考文件
 

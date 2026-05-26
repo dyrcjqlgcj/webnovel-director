@@ -156,30 +156,111 @@ def parse_hooks(path: Path) -> list[dict]:
     return hooks
 
 
+# ── Volume map parsing ──
+
+
+def parse_volume_map_file(path: Path) -> list[dict]:
+    """Parse volume_map.md table to extract volume→chapter-range mappings.
+
+    Handles table format:
+    | 一 | 1-50    | ... | ... | ... |
+    | 二 | 51-120  | ... | ... | ... |
+
+    Returns list of {volume, start, end} dicts sorted by volume.
+    """
+    vols = []
+    text = read(path)
+    in_table = False
+    cn_nums = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+    for line in text.splitlines():
+        s = line.strip()
+        if not in_table:
+            if "卷" in s and "章" in s and s.startswith("|"):
+                in_table = True
+            continue
+        if not s.startswith("|") or "---" in s:
+            continue
+        if "偏离日志" in s or "卷级禁区" in s:
+            break
+        cells = split_cell(s)
+        if len(cells) < 2:
+            continue
+        vol_name = cells[0].strip()
+        if not vol_name:
+            continue
+        # Extract volume number
+        vol_match = re.search(r"([\d一二三四五六七八九十]+)", vol_name)
+        if not vol_match:
+            continue
+        vol_str = vol_match.group(1)
+        vol_num = cn_nums.get(vol_str, None)
+        if vol_num is None:
+            try:
+                vol_num = int(vol_str)
+            except ValueError:
+                continue
+        # Parse chapter range: "1-50" or "1-50 章"
+        range_str = cells[1].strip() if len(cells) > 1 else ""
+        range_match = re.search(r"(\d+)\s*[-–—]\s*(\d+)", range_str)
+        if range_match:
+            start = int(range_match.group(1))
+            end = int(range_match.group(2))
+        else:
+            ch_match = re.search(r"(\d+)\s*章", range_str)
+            if ch_match:
+                end = int(ch_match.group(1))
+                start = (vols[-1]["end"] + 1) if vols else 1
+            else:
+                continue
+        vols.append({"volume": vol_num, "start": start, "end": end})
+    return sorted(vols, key=lambda v: v["volume"])
+
+
+def chapter_to_volume(ch_num: int, volume_ranges: list[dict]) -> int | None:
+    """Map a chapter number to its volume using parsed volume_map ranges."""
+    for vr in volume_ranges:
+        if vr["start"] <= ch_num <= vr["end"]:
+            return vr["volume"]
+    return None
+
+
 # ── per-dimension checkers ──
 
-def check_volume_promise(ch: dict, volume_zones: list[dict], ch_index: int, total: int) -> dict:
-    """Check if this chapter fits the current volume's constraints."""
-    issues=[]
+def check_volume_promise(ch: dict, volume_zones: list[dict], ch_index: int, total: int, volume_ranges: list[dict] | None = None) -> dict:
+    """Check if this chapter fits the current volume's constraints.
+
+    Determines volume from parsed volume_map.md ranges when available.
+    Falls back to hardcoded thresholds only when no volume_map is found.
+    """
+    issues = []
     goal = (ch.get("goal") or "").strip()
-    forbidden = (ch.get("forbidden") or "").strip()
-    # Guess volume from chapter number: 1-25=v1, 26-70=v2, 71-140=v3, ...
-    vol=1
-    if ch["chapter"]>25: vol=2
-    if ch["chapter"]>70: vol=3
-    if ch["chapter"]>140: vol=4
-    if ch["chapter"]>240: vol=5
-    if ch["chapter"]>360: vol=6
-    if ch["chapter"]>500: vol=7
-    vz = next((z for z in volume_zones if z.get("volume")==vol), None)
+    forbidden_col = (ch.get("forbidden") or "").strip()
+
+    # Determine volume from volume_map.md, with fallback
+    if volume_ranges:
+        vol = chapter_to_volume(ch["chapter"], volume_ranges)
+    else:
+        vol = None
+    if vol is None:
+        vol = 1
+        if ch["chapter"] > 25: vol = 2
+        if ch["chapter"] > 70: vol = 3
+        if ch["chapter"] > 140: vol = 4
+        if ch["chapter"] > 240: vol = 5
+        if ch["chapter"] > 360: vol = 6
+        if ch["chapter"] > 500: vol = 7
+
+    vz = next((z for z in volume_zones if z.get("volume") == vol), None)
     if vz and vz.get("forbidden"):
         for keyword in re.split(r"[、,，]", vz["forbidden"]):
-            kw=keyword.strip()
-            if kw and kw in goal+forbidden:
-                issues.append({"severity":"FAIL","dimension":"volume_promise","issue":f"触犯卷{vol}禁区: {kw}"})
-    if not goal and ch_index==0:
-        issues.append({"severity":"WARN","dimension":"volume_promise","issue":"首章Goal缺失，无法判断卷目标衔接"})
-    return {"pass":len([i for i in issues if i["severity"]=="FAIL"])==0, "issues":issues}
+            kw = keyword.strip()
+            if kw and kw in goal + forbidden_col:
+                issues.append({"severity": "FAIL", "dimension": "volume_promise",
+                               "issue": f"触犯卷{vol}禁区: {kw}"})
+    if not goal and ch_index == 0:
+        issues.append({"severity": "WARN", "dimension": "volume_promise",
+                       "issue": "首章Goal缺失，无法判断卷目标衔接"})
+    return {"pass": len([i for i in issues if i["severity"] == "FAIL"]) == 0, "issues": issues}
 
 
 def extract_concept_anchors(text: str) -> list[str]:
@@ -342,6 +423,12 @@ def main() -> int:
     chapters = parse_queue(book/"director/chapter_queue.md")
     hooks = parse_hooks(book/"truth/pending_hooks.md")
 
+    # Parse volume_map.md for chapter-to-volume mapping (with fallback paths)
+    vol_map_candidates = [book / "director" / "volume_map.md",
+                          book / "story" / "outline" / "volume_map.md"]
+    vol_map_path = next((p for p in vol_map_candidates if p.exists()), None)
+    volume_ranges = parse_volume_map_file(vol_map_path) if vol_map_path else []
+
     if not chapters:
         result={"status":"FAIL","chapters":[],"issues":[{"severity":"FAIL","issue":"chapter_queue has no rows"}]}
         if args.json: print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -359,7 +446,7 @@ def main() -> int:
 
     for idx, ch in enumerate(chapters):
         checks={}
-        checks["volume_promise"]=check_volume_promise(ch, volume_zones, idx, len(chapters))
+        checks["volume_promise"]=check_volume_promise(ch, volume_zones, idx, len(chapters), volume_ranges)
         checks["premise_alignment"]=check_premise_alignment(ch, premise_text, forbidden_zones)
         checks["forbidden_zone"]=check_forbidden_zone(ch, forbidden_zones, role_locks)
         checks["satisfaction_progression"]=check_satisfaction_progression(chapters, idx)
