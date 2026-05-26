@@ -236,15 +236,6 @@ def run_action(book_dir: Path, action: str) -> dict:
     actions = {
         "doctor": [sys.executable, str(scripts / "director_doctor.py"), book],
         "review": [sys.executable, str(scripts / "outline_gate_review.py"), book],
-        "causal": [sys.executable, str(scripts / "outline_causal_check.py"), book],
-        "iterate": [sys.executable, str(scripts / "outline_iterate.py"), book,
-                    "--no-llm", "--max-rounds", "2"],
-        "scoring": [sys.executable, str(scripts / "scoring_card.py"), book, "--chapter", "1-99"],
-        "trend": [sys.executable, str(scripts / "trend_chart.py"), book, "--last", "30"],
-        "batch_repair": [sys.executable, str(scripts / "repair_plan.py"), book, "--batch", "--auto-apply"],
-        "pacing": [sys.executable, str(scripts / "validate_pacing.py"), book, "--with-outline-gate"],
-        "l3_review": [sys.executable, str(scripts / "review_parallel.py"), book],
-        "cron_audit": [sys.executable, str(scripts / "cron_auditor.py"), "--check", book],
     }
 
     if action.startswith("review_ch_"):
@@ -432,7 +423,7 @@ td.goal:hover { white-space: normal; overflow: visible; background: var(--bg); p
       </h2>
       <div style="max-height:600px;overflow-y:auto">
       <table id="chapter-table"><thead><tr>
-        <th style="width:40px">#</th><th style="width:90px">标题</th><th style="width:55px">字数</th><th style="width:75px">修改</th><th style="width:55px">审查</th><th style="width:75px">时间</th><th style="width:140px">审查详情</th><th style="width:60px">状态</th><th style="width:44px"></th>
+        <th style="width:40px">#</th><th style="width:80px">标题</th><th style="width:50px">字数</th><th style="width:44px">评分</th><th style="width:55px">审查</th><th style="width:75px">时间</th><th style="width:160px">审查详情</th><th style="width:60px">状态</th><th style="width:44px"></th>
       </tr></thead><tbody></tbody></table>
       </div>
     </div>
@@ -494,7 +485,46 @@ td.goal:hover { white-space: normal; overflow: visible; background: var(--bg); p
 const STATE = {};
 let currentVolume = 0;
 
-function normalizeStatus(s) {
+function calcScore(c) {
+  // Simple heuristic: has body=1, has goal=1, has premise_hit=1, reviewed=1, no FAIL=1
+  let s = 0;
+  if (c.words > 0) s++;
+  if (c.goal && c.goal.length > 3 && c.goal !== '未设定') s++;
+  if (c.premise_hit && c.premise_hit.length > 3 && c.premise_hit !== '未设定') s++;
+  if (c.review_verdict === 'PASS') s += 2;
+  else if (c.review_verdict === 'WARN') s++;
+  else if (c.review_verdict === 'FAIL') s += 0;
+  else if (c.words > 0) s++; // written but not reviewed => bonus for having content
+  // Map to grade
+  if (s >= 5) return {grade:'A', color:'#22c55e', bg:'rgba(34,197,94,0.12)'};
+  if (s >= 4) return {grade:'B', color:'#10b981', bg:'rgba(16,185,129,0.10)'};
+  if (s >= 3) return {grade:'C', color:'#eab308', bg:'rgba(234,179,8,0.10)'};
+  if (s >= 2) return {grade:'D', color:'#f97316', bg:'rgba(249,115,22,0.10)'};
+  return {grade:'-', color:'var(--muted)', bg:'transparent'};
+}
+
+// Trend: compare with previous chapter
+function scoreHtml(c) {
+  const sc = calcScore(c);
+  if (sc.grade === '-') return '<span style="color:var(--muted);font-size:11px">-</span>';
+  // Find trend
+  let prev = null;
+  if (c.chapter > 1) {
+    prev = (STATE.chapters||[]).find(x => x.chapter === c.chapter - 1);
+  }
+  const prevSc = prev ? calcScore(prev) : null;
+  let trend = '';
+  if (prevSc && prevSc.grade !== '-') {
+    const grades = ['F','D','C','B','A'];
+    const curIdx = grades.indexOf(sc.grade);
+    const prevIdx = grades.indexOf(prevSc.grade);
+    if (curIdx > prevIdx) trend = ' ↑';
+    else if (curIdx < prevIdx) trend = ' ↓';
+    else trend = ' →';
+  }
+  return '<span style="display:inline-block;width:28px;height:22px;line-height:22px;border-radius:4px;text-align:center;font-size:12px;font-weight:700;color:'+sc.color+';background:'+sc.bg+'">'+sc.grade+'</span>'
+       + '<span style="font-size:9px;margin-left:2px;color:var(--muted)">'+trend+'</span>';
+}function normalizeStatus(s) {
   s = (s || '').toUpperCase();
   if (['WRITTEN','已写'].includes(s)) return 'written';
   if (['PASS','通过'].includes(s)) return 'pass';
