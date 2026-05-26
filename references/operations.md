@@ -23,12 +23,12 @@
 | 目标 | 先读 | 命令/模块 | 产物 |
 |---|---|---|---|
 | 新书接入 director | `modules/project-init/rules.md` | `scripts\init_project.py` | director/truth 骨架 |
-| 旧 inkos 项目接入 | `scripts/sync_inkos_state.py` | `scripts/scripts\sync_inkos_state.py --write` | 同步 currentChapter/truth |
+| 旧 inkos 项目接入 | `scripts/sync_inkos_state.py` | `scripts\sync_inkos_state.py --write` | 同步 currentChapter/truth |
 | 检查项目健康 | 本文件即可 | `scripts\director_doctor.py` | PASS/WARN/FAIL |
 | 审查待写队列 | `modules/outline-gate/rules.md` | `scripts\outline_gate_review.py` | 队列是否可派发 |
 | 多 Agent 并行审查 | `scripts/review_parallel.py` | 4 子 Agent 并行 + 交叉矛盾检测 | 否 |
 | 生成写作任务包 | `modules/execution-dispatch/rules.md` | `scripts\build_task_package.py` | YAML-like task package |
-| 写后回写 | `references/post-writeback.md` | `scripts/scripts\post_writeback.py --write` | director/truth 更新 |
+| 写后回写 | `references/post-writeback.md` | `scripts\post_writeback.py --write` | director/truth 更新 |
 | 从旧项目提取 premise | `scripts/extract_premise.py` | 读 story 文件生成 premise 初稿 | 否 |
 | 验证关系图 | `scripts/validate_relationships.py` | 检查因果边的完整性 | 否 |
 | 审查已写章节 | `scripts/review_chapter.py` | 正文→任务包对照 Level 1 审查 | 否 |

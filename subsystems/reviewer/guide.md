@@ -10,7 +10,7 @@ webnovel-director 的多视角审查子系统。每章写完后自动触发，�
 | L2 | 每 10 章 | 剧情逻辑、人物目标、情绪关系、伏笔 | solo |
 | L3 | 每 30 章/卷末 | 多 Agent 并行深审 | full（4 Agent 并行） |
 
-> L3 也可以手动触发：`/审查` 或 `python scripts/scripts\review_parallel.py <book_dir>`
+> L3 也可以手动触发：`/审查` 或 `python scripts\review_parallel.py <book_dir>`
 
 ## L1 审查（每章）
 

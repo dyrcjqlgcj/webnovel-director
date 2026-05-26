@@ -105,39 +105,39 @@ repair-feedback 处理 WARN/FAIL
 
 ## 五个子系统（自包含）
 
-所有子系统内置完整方法论，无需外部 skill 依赖。详细规则见各子系统的 `modules\chapter-review\guide.md`。
+所有子系统内置完整方法论，无需外部 skill 依赖。详细规则见各子系统的 `subsystems/{scanner,analyzer,writer,reviewer,polisher}/guide.md`。
 
 ### scanner — 市场雷达
 - 平台数据采集（番茄/起点/盐言/七猫等）
 - 跨样本信号提取 + 可写性评估
 - 热点题材趋势 + 饱和风险分析
-- 参考：`modules\chapter-review\guide.md`
+- 参考：`subsystems/scanner/guide.md`
 
 ### analyzer — 拆文引擎
 - 黄金三章逐章拆解
 - 整体结构分析（故事线/人物位/节奏/反派）
 - 快速模式 + 深度模式（逐章结构化输出）
 - 角色位抽象：把对标书角色映射为功能位
-- 参考：`modules\chapter-review\guide.md`
+- 参考：`subsystems/analyzer/guide.md`
 
 ### writer — 正文执行器
 - 完整写作方法论（情绪驱动/黄金三章/钩子13式/三维度织入）
 - 禁用词表 + AI 味检测规则
 - 长篇/短篇双模式
 - 日更工作流 + 大修工作流
-- 参考：`modules\chapter-review\guide.md`
+- 参考：`subsystems/writer/guide.md`
 
 ### reviewer — 深度审查
 - L1/L2/L3 分级审查
 - 4 Agent 并行深审（命题/一致性/结构/伏笔）
 - R0-R4 自动分级修复
-- 参考：`modules\chapter-review\guide.md`
+- 参考：`subsystems/reviewer/guide.md`
 
 ### polisher — 去AI味
 - AI 味 vs 自然文本基准对比
 - 分级保护（轻度≤15%/中度≤25%/重度≤35%删除上限）
 - 自然替换参考词表
-- 参考：`modules\chapter-review\guide.md`
+- 参考：`subsystems/polisher/guide.md`
 
 ## 第一版边界
 
@@ -146,7 +146,7 @@ repair-feedback 处理 WARN/FAIL
 - references 架构/状态/cron/集成说明。
 - 8 个模块五文件协议骨架。
 - 项目模板与初始化/校验脚本。
-- 5 个子系统自包含 modules\chapter-review\guide.md + 完整 reference 文件。
+- 5 个子系统自包含 guide.md + 完整 reference 文件。
 
 暂不做：
 - 自动改现有 cron。
