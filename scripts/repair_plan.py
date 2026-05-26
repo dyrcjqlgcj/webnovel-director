@@ -151,19 +151,257 @@ def generate_plan(chapter: int, highest_level: str, classified: list[dict], book
     return "\n".join(lines) + "\n"
 
 
+# ── batch mode ──
+
+
+def apply_auto_fix(book_dir: Path, ch_num: int, highest_level: str,
+                   classified: list[dict]) -> list[str]:
+    """Auto-apply R0 and R1 fixes. Returns list of actions taken."""
+    actions = []
+
+    if highest_level == "R0":
+        # R0: Just log to audit_log, no content changes
+        audit_path = book_dir / "director" / "audit_log.md"
+        now = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M")
+        entry = f"| {now} | repair_plan(auto) | 第{ch_num}章 | PASS | R0记录:{classified[0]['problem'][:30] if classified else '已记录'} | 继续 |"
+        if audit_path.exists():
+            with audit_path.open("a", encoding="utf-8") as f:
+                f.write(entry + "\n")
+        else:
+            audit_path.write_text(
+                "# Audit Log\n\n| Time | Module | Object | Result | Summary | Next |\n"
+                "|---|---|---|---|---|---|\n" + entry + "\n",
+                encoding="utf-8")
+        actions.append(f"R0: 已记录到 audit_log — {classified[0]['problem'][:40] if classified else '已记录'}")
+
+    elif highest_level == "R1":
+        # R1: Update chapter_queue status to NEEDS_REVIEW, log to audit_log
+        cq_path = book_dir / "director" / "chapter_queue.md"
+        if cq_path.exists():
+            content = read(cq_path)
+            new_lines = []
+            updated = False
+            for line in content.splitlines():
+                s = line.strip()
+                if s.startswith("|") and "---" not in s and "Chapter" not in s:
+                    cells = [c.strip() for c in s.strip("|").split("|")]
+                    if len(cells) >= 6:
+                        n = re.sub(r"\D", "", cells[0])
+                        if n.isdigit() and int(n) == ch_num:
+                            cells[5] = "NEEDS_REVIEW"
+                            new_lines.append("| " + " | ".join(cells) + " |")
+                            updated = True
+                            continue
+                new_lines.append(line)
+            if updated:
+                cq_path.write_text("\n".join(new_lines), encoding="utf-8")
+                actions.append(f"R1: chapter_queue 第{ch_num}章状态 → NEEDS_REVIEW")
+
+        # Log to audit_log
+        audit_path = book_dir / "director" / "audit_log.md"
+        now = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M")
+        entry = f"| {now} | repair_plan(auto) | 第{ch_num}章 | WARN | R1局部修:{classified[0]['problem'][:30] if classified else '局部修复'} | review_chapter重审 |"
+        if audit_path.exists():
+            with audit_path.open("a", encoding="utf-8") as f:
+                f.write(entry + "\n")
+        else:
+            audit_path.write_text(
+                "# Audit Log\n\n| Time | Module | Object | Result | Summary | Next |\n"
+                "|---|---|---|---|---|---|\n" + entry + "\n",
+                encoding="utf-8")
+        actions.append("R1: 已记录到 audit_log，需 review_chapter 重审")
+
+    return actions
+
+
+def run_batch_mode(book_dir: Path, auto_apply: bool = False) -> int:
+    """Batch repair: scan chapter_queue for WARN/FAIL, classify & optionally auto-fix."""
+    # Ensure UTF-8 output on Windows
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    cq_path = book_dir / "director" / "chapter_queue.md"
+    if not cq_path.exists():
+        print(f"错误: {cq_path} 不存在")
+        return 1
+
+    queue_text = read(cq_path)
+    warn_fail_chapters = []
+    for line in queue_text.splitlines():
+        s = line.strip()
+        if not s.startswith("|") or "---" in s or "Chapter" in s:
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if len(cells) >= 6:
+            n = re.sub(r"\D", "", cells[0])
+            if n.isdigit():
+                status = cells[5].upper()
+                if status in ("WARN", "FAIL"):
+                    warn_fail_chapters.append({
+                        "chapter": int(n),
+                        "title": cells[1],
+                        "goal": cells[2],
+                        "premise_hit": cells[3],
+                        "forbidden": cells[4],
+                        "status": status,
+                    })
+
+    if not warn_fail_chapters:
+        print("[OK] 未找到 WARN/FAIL 章节，无需修复。")
+        return 0
+
+    print(f"\n[*] 批量修复模式: 发现 {len(warn_fail_chapters)} 个 WARN/FAIL 章节")
+    if auto_apply:
+        print("   --auto-apply: R0/R1级别修复将自动应用")
+    print()
+
+    results = []
+    for ch in warn_fail_chapters:
+        print(f"  [{ch['status']}] 第{ch['chapter']:3d}章 {ch['title']} ... ", end="", flush=True)
+
+        # Try to get review data
+        review_path = None
+        for cand in [
+            book_dir / "director" / "reviews" / f"ch{ch['chapter']:04d}_review.json",
+            book_dir / "director" / f"ch{ch['chapter']:04d}_review.json",
+        ]:
+            if cand.exists():
+                review_path = cand
+                break
+
+        problems = []
+        verdict = ch["status"]
+        review_source = "chapter_queue"
+
+        if review_path:
+            try:
+                review_data = json.loads(read(review_path))
+                verdict = review_data.get("status", ch["status"])
+                review_source = str(review_path)
+                # Extract issues
+                if "issues" in review_data and isinstance(review_data["issues"], list):
+                    for issue in review_data["issues"]:
+                        if isinstance(issue, dict):
+                            problems.append(f"[{issue.get('area','?')}] {issue.get('issue','?')}")
+                        else:
+                            problems.append(str(issue))
+                if "checks" in review_data:
+                    for chk in review_data.get("checks", []):
+                        if chk.get("severity") != "PASS":
+                            problems.append(f"[{chk.get('name','?')}] {chk.get('issue','')}")
+            except Exception:
+                pass
+
+        # Fallback: no review file or couldn't parse
+        if not problems:
+            problems.append(f"章节队列状态为 {verdict}，需审查修复")
+
+        highest_level, classified = classify_problems(problems, verdict)
+        action_name = REPAIR_ACTIONS[highest_level]["action"]
+
+        # Save plan
+        plan = generate_plan(ch["chapter"], highest_level, classified, book_dir, review_source)
+        plan_dir = book_dir / "director" / "repair_plans"
+        plan_dir.mkdir(parents=True, exist_ok=True)
+        plan_path = plan_dir / f"ch{ch['chapter']:04d}_repair.md"
+        plan_path.write_text(plan, encoding="utf-8")
+
+        can_auto = auto_apply and highest_level in ("R0", "R1")
+        auto_actions = []
+        if can_auto:
+            auto_actions = apply_auto_fix(book_dir, ch["chapter"], highest_level, classified)
+
+        results.append({
+            "chapter": ch["chapter"],
+            "title": ch["title"],
+            "status": ch["status"],
+            "level": highest_level,
+            "action": action_name,
+            "auto_applied": can_auto and len(auto_actions) > 0,
+            "auto_actions": auto_actions,
+            "plan_path": str(plan_path),
+            "problem_count": len(classified),
+        })
+
+        tag = "[OK]自动" if results[-1]["auto_applied"] else ("[!!]待处理" if highest_level in ("R0", "R1") else "[XX]需人工")
+        print(f"→ {highest_level} {action_name} {tag}")
+
+    # ═══ Summary report ═══
+    print()
+    print("=" * 64)
+    print("  批量修复汇总报告")
+    print("=" * 64)
+    total = len(results)
+    auto_done = sum(1 for r in results if r["auto_applied"])
+    manual = total - auto_done
+    r0_count = sum(1 for r in results if r["level"] == "R0")
+    r1_count = sum(1 for r in results if r["level"] == "R1")
+    r2_count = sum(1 for r in results if r["level"] == "R2")
+    r3_count = sum(1 for r in results if r["level"] == "R3")
+    r4_count = sum(1 for r in results if r["level"] == "R4")
+
+    print(f"  总计: {total} 章 | 自动应用: {auto_done} | 需人工处理: {manual}")
+    print(f"  R0(记录): {r0_count} | R1(局部修): {r1_count} | R2(回炉): {r2_count} "
+          f"| R3(细纲重排): {r3_count} | R4(卷级回滚): {r4_count}")
+    print()
+
+    for r in results:
+        tag_icon = "[OK]" if r["auto_applied"] else ("[!!]" if r["level"] in ("R0", "R1") else "[XX]")
+        print(f"  {tag_icon} 第{r['chapter']:3d}章 [{r['status']}] → {r['level']} {r['action']}")
+        if r["auto_actions"]:
+            for act in r["auto_actions"]:
+                print(f"          {act}")
+        if not r["auto_applied"]:
+            print(f"          修复计划: {r['plan_path']}")
+    print()
+
+    # Write summary to file
+    summary_path = book_dir / "director" / "repair_plans" / "batch_summary.json"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_data = {
+        "time": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "total": total,
+        "auto_applied": auto_done,
+        "manual": manual,
+        "levels": {"R0": r0_count, "R1": r1_count, "R2": r2_count, "R3": r3_count, "R4": r4_count},
+        "results": [{
+            "chapter": r["chapter"],
+            "status": r["status"],
+            "level": r["level"],
+            "auto_applied": r["auto_applied"],
+        } for r in results],
+    }
+    summary_path.write_text(json.dumps(summary_data, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"  汇总已保存: {summary_path}")
+
+    return 0
+
+
 # ── main ──
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("book_dir")
-    ap.add_argument("--chapter", type=int, required=True)
+    ap.add_argument("--chapter", type=int, help="章节号（单章模式，与--batch互斥）")
     ap.add_argument("--from-review", help="JSON review report file (from review_chapter/review_parallel)")
     ap.add_argument("--problem", action="append", default=[], help="Problem description (repeatable)")
     ap.add_argument("--verdict", default="WARN", choices=["PASS", "WARN", "FAIL"], help="Overall verdict")
     ap.add_argument("--out", help="Write repair plan to file")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--batch", action="store_true",
+                    help="批量模式: 扫描 chapter_queue 中所有 WARN/FAIL 章节")
+    ap.add_argument("--auto-apply", action="store_true",
+                    help="自动应用 R0/R1 级修复（需配合 --batch）")
     args = ap.parse_args()
     book = Path(args.book_dir).resolve()
+
+    # ── Batch mode ──
+    if args.batch:
+        return run_batch_mode(book, auto_apply=args.auto_apply)
+
+    # ── Single chapter mode ──
+    if args.chapter is None:
+        ap.error("需要 --chapter 或 --batch 参数")
 
     problems = list(args.problem)
     review_source = f"--problem 手动输入 ({len(problems)}条)"

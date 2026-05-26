@@ -9,10 +9,20 @@ dashboard with chapter status, progress tracking, and one-click actions.
 """
 
 from __future__ import annotations
-import argparse, datetime, json, os, re, subprocess, sys, webbrowser
+import argparse, datetime, json, os, re, subprocess, sys, time, webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
+
+# ── ANSI color codes ──
+RED = '\033[91m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+CYAN = '\033[96m'
+MAGENTA = '\033[95m'
+BOLD = '\033[1m'
+DIM = '\033[2m'
+RESET = '\033[0m'
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 
@@ -856,13 +866,173 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
 
 
+def parse_audit_log(audit_log_path: Path) -> list[dict]:
+    """Parse audit_log.md table rows into a list of dicts."""
+    if not audit_log_path.exists():
+        return []
+    text = read(audit_log_path)
+    rows = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s.startswith("|") or "---" in s or "Time" in s:
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if len(cells) >= 5:
+            rows.append({
+                "time": cells[0],
+                "module": cells[1],
+                "object": cells[2],
+                "result": cells[3].upper(),
+                "summary": cells[4],
+                "next": cells[5] if len(cells) > 5 else "",
+            })
+    return rows
+
+
+def run_cli_mode(args) -> int:
+    """Render a colored terminal dashboard panel."""
+    # Ensure UTF-8 output on Windows
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    book_dir = Path(args.book_dir).resolve() if args.book_dir else None
+
+    # Try auto-detect
+    if not book_dir:
+        cwd = Path.cwd()
+        if (cwd / "director" / "director_state.json5").exists():
+            book_dir = cwd
+        else:
+            print(f"{RED}用法: python dashboard_server.py <book_dir> --mode cli{RESET}")
+            return 1
+
+    if not (book_dir / "director" / "director_state.json5").exists():
+        print(f"{RED}错误: {book_dir} 中未找到 director/director_state.json5{RESET}")
+        return 1
+
+    refresh_interval = args.refresh or 0
+
+    while True:
+        # Clear screen
+        os.system("cls" if os.name == "nt" else "clear")
+
+        state = get_project_state(book_dir)
+        audit_log_path = book_dir / "director" / "audit_log.md"
+        audit_entries = parse_audit_log(audit_log_path)
+
+        # Audit status block
+        audit_status = (state.get("last_audit") or {}).get("status", "NONE")
+        status_color = {"PASS": GREEN, "WARN": YELLOW, "FAIL": RED}.get(audit_status, RESET)
+        status_icon = {"PASS": f"{GREEN}[OK]{RESET}", "WARN": f"{YELLOW}[!!]{RESET}",
+                       "FAIL": f"{RED}[XX]{RESET}", "NONE": f"{DIM}[--]{RESET}"}.get(audit_status, "[--]")
+        status_block = {"PASS": "████", "WARN": "▓▓▓▓", "FAIL": "░░░░", "NONE": "····"}.get(audit_status, "····")
+
+        # ═══ Top: Project header ═══
+        title = state.get("title", book_dir.name)
+        print(f"{BOLD}{CYAN}╔{'═' * 58}╗{RESET}")
+        print(f"{BOLD}{CYAN}║{RESET} {BOLD}项目:{RESET} 《{title}》")
+        print(f"{BOLD}{CYAN}║{RESET} {BOLD}状态:{RESET} {status_icon} {status_color}{audit_status} {status_color}{status_block}{RESET}")
+        if state.get("premise_summary"):
+            prem_line = state["premise_summary"][:48]
+            print(f"{BOLD}{CYAN}║{RESET} {BOLD}命题:{RESET} {DIM}{prem_line}{RESET}")
+        blockers = state.get("blockers", [])
+        if blockers:
+            print(f"{BOLD}{CYAN}║{RESET} {BOLD}阻塞:{RESET} {RED}{len(blockers)} 项{RESET}  {', '.join(blockers[:2])}")
+        print(f"{BOLD}{CYAN}╚{'═' * 58}╝{RESET}")
+
+        # ═══ Middle: Chapter progress ═══
+        print(f"\n{CYAN}📊 章节进度{RESET}")
+        total = state.get("total_chapters_planned", 0)
+        written = state.get("total_chapters_written", 0)
+        ratio = written / max(total, 1)
+        bar_width = 40
+        filled = int(bar_width * ratio)
+        bar = "█" * filled + "░" * (bar_width - filled)
+        pct_bar = f"{bar} {written}/{total} ({ratio * 100:.1f}%)"
+        print(f"  {pct_bar}")
+
+        # Word count + review stats
+        total_chars = state.get("total_chars", 0)
+        chapters_list = state.get("chapters", [])
+        pass_n = sum(1 for c in chapters_list if c.get("review_verdict") == "PASS")
+        warn_n = sum(1 for c in chapters_list if c.get("review_verdict") == "WARN")
+        fail_n = sum(1 for c in chapters_list if c.get("review_verdict") == "FAIL")
+        total_reviewed = pass_n + warn_n + fail_n
+        print(f"  总字数: {total_chars / 10000:.1f}万字 | 已审查: {total_reviewed}章 "
+              f"({GREEN}{pass_n}P{RESET} {YELLOW}{warn_n}W{RESET} {RED}{fail_n}F{RESET})")
+
+        # Chapter status breakdown (quick grid)
+        if chapters_list:
+            cols = 10
+            ch_status_grid = []
+            for ch in chapters_list:
+                ch_status_grid.append(ch)
+            # Print a compact status line
+            status_chars = []
+            for ch in chapters_list[:80]:
+                s = (ch.get("status") or "").upper()
+                if s in ("PASS", "WRITTEN"):
+                    status_chars.append(f"{GREEN}●{RESET}")
+                elif s == "WARN":
+                    status_chars.append(f"{YELLOW}●{RESET}")
+                elif s == "FAIL":
+                    status_chars.append(f"{RED}●{RESET}")
+                else:
+                    status_chars.append(f"{DIM}○{RESET}")
+            # Layout in rows of 20
+            row_width = 20
+            for row_start in range(0, min(len(status_chars), 80), row_width):
+                row_chars = status_chars[row_start:row_start + row_width]
+                ch_start = row_start + 1
+                ch_end = min(row_start + row_width, len(status_chars))
+                print(f"  ch{ch_start:02d}-{ch_end:02d}: {''.join(row_chars)}")
+
+        # ═══ Bottom: Last 5 audit records ═══
+        print(f"\n{CYAN}📋 最近审计记录 (共 {len(audit_entries)} 条){RESET}")
+        if audit_entries:
+            recent = audit_entries[-5:]
+            # Header
+            print(f"  {DIM}{'时间':<20} {'模块':<16} {'对象':<14} {'结果':<6} {'摘要'}{RESET}")
+            for entry in recent:
+                result_color = {"PASS": GREEN, "WARN": YELLOW, "FAIL": RED}.get(entry["result"], RESET)
+                time_str = entry["time"][:19]
+                module_str = entry["module"][:15]
+                obj_str = entry["object"][:13]
+                summary_str = entry["summary"][:40]
+                print(f"  {DIM}{time_str:<20}{RESET} {module_str:<16} {obj_str:<14} "
+                      f"{result_color}{entry['result']:<6}{RESET} {summary_str}")
+        else:
+            print(f"  {DIM}(暂无审计记录){RESET}")
+
+        # ═══ Footer ═══
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if refresh_interval > 0:
+            print(f"\n{DIM}  刷新间隔: {refresh_interval}s | 更新时间: {now_str} | Ctrl+C 退出{RESET}")
+            try:
+                time.sleep(refresh_interval)
+            except KeyboardInterrupt:
+                print(f"\n{RESET}  已停止")
+                return 0
+        else:
+            print(f"\n{DIM}  更新时间: {now_str}{RESET}")
+            return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="webnovel-director Dashboard")
     ap.add_argument("book_dir", nargs="?", help="小说项目路径")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+    ap.add_argument("--mode", choices=["server", "cli"], default="server",
+                    help="运行模式: server (Web仪表盘) 或 cli (终端面板)")
+    ap.add_argument("--refresh", "-r", type=int, default=0, metavar="N",
+                    help="CLI模式自动刷新间隔(秒), 0=单次输出")
     args = ap.parse_args()
 
+    if args.mode == "cli":
+        return run_cli_mode(args)
+
+    # ── Server mode ──
     if not args.book_dir:
         # Try to find a project in current dir
         cwd = Path.cwd()
@@ -870,6 +1040,7 @@ def main() -> int:
             args.book_dir = str(cwd)
         else:
             print("用法: python dashboard_server.py <book_dir> [--port 8765]")
+            print("  或: python dashboard_server.py <book_dir> --mode cli [--refresh N]")
             print("或在含有 director/director_state.json5 的项目目录下运行")
             return 1
 
