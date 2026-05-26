@@ -48,42 +48,64 @@ def find_chapter_files(book_dir: Path) -> dict[int, Path]:
     return chapters
 
 
-def find_split_point(text: str) -> int | None:
-    """在正文中找自然断点，返回分割位置（字符索引）。
-
-    优先级：场景分隔符(***/---) > 空行簇 > 时间跳跃 > 视角切换 > 中间点。
-    """
+def find_best_split(text: str, target_pos: int) -> int | None:
+    """在目标位置附近找最佳断点，返回分割位置。
+    搜索范围：target_pos ± 20% 区间内。"""
+    total = len(text)
+    window = total // 5
+    lo = max(0, target_pos - window)
+    hi = min(total, target_pos + window)
+    search = text[lo:hi]
+    
     # 1. 场景分隔符
-    for m in re.finditer(r"(?:^|\n)\*{3,}\s*\n|(?:^|\n)-{3,}\s*\n", text, re.MULTILINE):
-        pos = m.start()
-        # 只在中间 1/3 到 2/3 的位置找断点
-        third, two_thirds = len(text) // 3, len(text) * 2 // 3
-        if third < pos < two_thirds:
-            return pos
+    for m in re.finditer(r"(?:^|\n)[-*]{3,}\s*\n", search, re.MULTILINE):
+        return lo + m.end()
+    # 2. 时间跳跃
+    for m in re.finditer(r"\n(?:过了|第二天|次日|几小时后|不久后|转眼|数日后|一周后|半夜|凌晨|清晨|黄昏|傍晚|入夜)", search, re.MULTILINE):
+        return lo + m.start()
+    # 3. 空行簇
+    for m in re.finditer(r"\n\n\n+", search, re.MULTILINE):
+        return lo + m.start()
+    # 4. 双空行
+    m = re.search(r"\n\n", search)
+    if m:
+        return lo + m.start()
+    # 5. 精确 target
+    return target_pos if lo < target_pos < hi else lo + len(search) // 2
 
-    # 2. 时间标记后紧跟新段落
-    for m in re.finditer(r"(?:^|\n)((?:过了|第二天|次日|几小时后|不久后|转眼|数日后|一周后|半夜|凌晨|清晨|黄昏|傍晚|入夜).*?)(?:\n\n|\n(?=\S))", text, re.MULTILINE):
-        pos = m.start()
-        third, two_thirds = len(text) // 3, len(text) * 2 // 3
-        if third < pos < two_thirds:
-            return pos
 
-    # 3. 双空行（段落分隔）
-    matches = list(re.finditer(r"\n\n\n+", text, re.MULTILINE))
-    if matches:
-        # 找中间区域的空行
-        third, two_thirds = len(text) // 3, len(text) * 2 // 3
-        for m in matches:
-            if third < m.start() < two_thirds:
-                return m.start()
+def find_n_split_points(text: str, n: int) -> list[int]:
+    """找 n-1 个断点，将正文均匀分成 n 段。"""
+    if n <= 1:
+        return []
+    total = len(text)
+    targets = [total * i // n for i in range(1, n)]
+    points = []
+    for t in targets:
+        pt = find_best_split(text, t)
+        if pt:
+            points.append(pt)
+    return points
 
-    # 4. 取中间位置最近的段落边界
-    mid = len(text) // 2
-    boundary = text.rfind("\n\n", 0, mid)
-    if boundary > 0:
-        return boundary
 
-    return None
+def segment_suffix(i: int, total: int) -> str:
+    """段编号后缀。"""
+    if total <= 1:
+        return ""
+    if total == 2:
+        return "（上）" if i == 0 else "（下）"
+    if total == 3:
+        return ["（上）", "（中）", "（下）"][i]
+    cn = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
+    if total <= 10:
+        return f"（{cn[i]}）"
+    return f"（{i + 1}）"
+
+
+def calculate_segments(max_words: int, char_count: int, max_segments: int = 6) -> int:
+    """根据字数计算需要几段，最多不超过 max_segments。"""
+    needed = (char_count + max_words - 1) // max_words
+    return min(max(1, needed), max_segments)
 
 
 def parse_chapter_name(title: str) -> tuple[str, str]:
@@ -135,52 +157,52 @@ def update_chapter_queue_rows(lines: list[str], split_ch: int) -> list[str]:
     return new_lines
 
 
-def rename_and_shift(book_dir: Path, split_ch: int, split_pos: int, ch_files: dict[int, Path]):
-    """执行拆章：重命名文件，后移后续章节。"""
+def rename_and_shift(book_dir: Path, split_ch: int, points: list[int], ch_files: dict[int, Path]):
+    """一次性拆分章节：计算段数→找断点→写N个文件→后移→更新queue。"""
     ch_dir = next((book_dir / d for d in ("正文", "chapters") if (book_dir / d).exists()), book_dir / "正文")
     ch_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. 读取原章内容
     orig_file = ch_files[split_ch]
     full_text = read_full_text(orig_file)
+    n = len(points) + 1
 
-    # 2. 拆分
-    up_text = full_text[:split_pos].strip()
-    down_text = full_text[split_pos:].strip()
-
-    # 3. 解析原标题
+    # 解析原标题
     orig_name = orig_file.stem
     m = re.match(r"第0*(\d+)章\s*(.+)", orig_name)
     title_text = m.group(2).strip() if m and m.group(2) else ""
-
-    # 去除已有的上下标记
     base_title, _ = parse_chapter_name(title_text)
 
-    # 4. 从后往前重命名（避免覆盖）
+    # 分段
+    segments = []
+    prev = 0
+    for pt in points:
+        segments.append(full_text[prev:pt].strip())
+        prev = pt
+    segments.append(full_text[prev:].strip())
+
+    # 从后往前后移后续章节
     max_ch = max(ch_files.keys())
+    shift = n - 1
     for ch in range(max_ch, split_ch, -1):
         if ch in ch_files:
             old = ch_files[ch]
             m2 = re.match(r"第0*(\d+)章\s*(.+)", old.stem)
             t = m2.group(2).strip() if m2 and m2.group(2) else ""
-            new_name = f"第{ch + 1:02d}章 {t}.md"
+            new_name = f"第{ch + shift:02d}章 {t}.md"
             new_path = ch_dir / new_name
             old.rename(new_path)
             print(f"  后移: {old.name} → {new_name}")
-            # Update files dict
-            ch_files[ch + 1] = new_path
 
-    # 5. 写上下篇
-    up_name = f"第{split_ch:02d}章 {base_title}（上）.md"
-    down_name = f"第{split_ch + 1:02d}章 {base_title}（下）.md"
+    # 写入新段
+    for i, seg in enumerate(segments):
+        suffix = segment_suffix(i, n)
+        ch_num = split_ch + i
+        seg_name = f"第{ch_num:02d}章 {base_title}{suffix}.md"
+        (ch_dir / seg_name).write_text(seg, encoding="utf-8")
+        chars = count_chars(seg)
+        print(f"  写入: {seg_name} ({chars}字)")
 
-    (ch_dir / up_name).write_text(up_text, encoding="utf-8")
-    print(f"  写入: {up_name} ({count_chars(up_text)}字)")
-
-    (ch_dir / down_name).write_text(down_text, encoding="utf-8")
-    print(f"  写入: {down_name} ({count_chars(down_text)}字)")
-
-    # 6. 删除原文件
+    # 删除原文件
     if orig_file.exists():
         orig_file.unlink()
         print(f"  删除: {orig_file.name}")
@@ -209,22 +231,25 @@ def check_and_report(book_dir: Path, max_words: int, dry_run: bool = True) -> in
         f = ch_files[ch]
         chars = count_body_chars(f)
         status = "OK" if chars <= max_words else "OVER"
-        print(f"  [{status}] 第{ch:02d}章: {chars}字")
+        segments = calculate_segments(max_words, chars)
+        print(f"  [{status}] 第{ch:02d}章: {chars}字", end="")
 
         if chars > max_words:
             over_count += 1
             full = read_full_text(f)
-            sp = find_split_point(full)
-            if sp:
-                print(f"      断点建议: 位置 {sp}/{len(full)} " +
-                      f"({sp * 100 // len(full)}%)")
-                # 显示前后各 50 字
-                before = full[max(0, sp - 30):sp].strip().replace("\n", " ")
-                after = full[sp:sp + 50].strip().replace("\n", " ")
-                print(f"      分割处: ...{before[-30:]} | {after[:30]}...")
-                to_split.append((ch, sp))
+            points = find_n_split_points(full, segments)
+            print(f" → 拆{segments}段", end="")
+            if points:
+                print()
+                for i, pt in enumerate(points):
+                    before = full[max(0, pt - 20):pt].strip().replace("\n", " ")
+                    after = full[pt:pt + 30].strip().replace("\n", " ")
+                    print(f"    断点{i+1}: {pt}/{len(full)} ({pt*100//len(full)}%) ...{before[-20:]} | {after[:20]}...")
+                to_split.append((ch, points))
             else:
-                print(f"      无合适断点（建议手动拆分）")
+                print(" 无合适断点")
+        else:
+            print()
 
     if over_count == 0:
         print(f"\nOK 所有章节在 {max_words} 字以内")
@@ -234,29 +259,31 @@ def check_and_report(book_dir: Path, max_words: int, dry_run: bool = True) -> in
         print(f"\n!!  发现 {over_count} 个超长章节。使用 --split 执行拆分。")
         return over_count
 
-    # 执行拆分
+    # 执行拆分（从后往前）
     print(f"\n>>> 开始拆分 {len(to_split)} 个章节...")
-    # 从后往前拆分，避免章号冲突
     queue_file = book_dir / "director" / "chapter_queue.md"
     if queue_file.exists() and to_split:
         q_lines = parse_chapter_queue_text(read_full_text(queue_file))
 
-    for ch, sp in sorted(to_split, reverse=True):
-        print(f"\n  拆分第 {ch} 章...")
-        # 重新获取文件（可能已被前面的拆分影响）
+    for ch, points in sorted(to_split, reverse=True):
+        print(f"\n  拆分第 {ch} 章 → {len(points)+1} 段...")
         current_files = find_chapter_files(book_dir)
         if ch in current_files:
-            rename_and_shift(book_dir, ch, sp, current_files)
-            # 更新 chapter_queue
+            rename_and_shift(book_dir, ch, points, current_files)
             if queue_file.exists():
                 q_lines = update_chapter_queue_rows(q_lines, ch)
-        else:
-            print(f"  跳过（文件已被后移）")
 
-    # 写入 chapter_queue
     if queue_file.exists() and to_split:
         write_full_text(queue_file, "\n".join(q_lines) + "\n")
-        print(f"\n>>> chapter_queue.md 已更新（后续章号已后移）")
+        print(f"\n>>> chapter_queue.md 已更新")
+
+    # 验证
+    print(f"\n>>> 拆分后验证...")
+    final = find_chapter_files(book_dir)
+    for ch in sorted(final.keys()):
+        chars = count_body_chars(final[ch])
+        status = "OK" if chars <= max_words else "OVER"
+        print(f"  [{status}] 第{ch:02d}章: {chars}字")
 
     return 0
 
