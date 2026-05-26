@@ -412,7 +412,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
     </div>
     <span style="font-size:11px;color:var(--muted);margin-left:8px;white-space:nowrap" id="header-progress-text">-</span>
   </div>
-  <span id="h-summary" style="font-size:10px;color:var(--muted);margin-left:12px;white-space:nowrap"></span>
   <div class="header-stats">
     <span class="header-stat-item">&#9888; <b id="h-warn">0</b></span>
     <span class="header-stat-item">&#10060; <b id="h-fail">0</b></span>
@@ -437,6 +436,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
     <div class="card" style="padding:12px">
       <div class="filter-row">
         <h2 style="margin:0;flex:1">章节状态</h2>
+        <span id="h-avg-words" style="font-size:11px;color:var(--muted);margin-right:10px">-</span>
         <select id="vol-select" onchange="switchVolume()"></select>
         <select id="status-filter" onchange="applyFilter()">
           <option value="">全部</option>
@@ -658,10 +658,10 @@ function render(data) {
   var pending = allCh.filter(function(c) { return !c.words || c.words === 0; }).length;
   document.getElementById('h-canwrite').textContent = pending;
 
-  // Summary row
+  // Average words in table header
   var totalWords = allCh.reduce(function(sum, c) { return sum + (c.words || 0); }, 0);
   var avgWords = written > 0 ? Math.round(totalWords / written) : 0;
-  document.getElementById('h-summary').textContent = '均章 ' + avgWords + '字';
+  document.getElementById('h-avg-words').textContent = '均' + avgWords + '字';
 
   // Sidebar: recent audits
   var audDiv = document.getElementById('sb-audit');
