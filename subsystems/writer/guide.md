@@ -16,6 +16,12 @@ webnovel-director 的写作执行子系统。接收 execution-dispatch 派发的
 1. **状态筛选**：从 `templates\current_state.md`、`templates\particle_ledger.md`、`templates\resource_ledger.md` 筛选本章涉及的状态和资源。
 2. **模块召回**：① 本章目标情绪词？② 借鉴哪个参考文件的哪个技法？③ 用在哪些段落？
 3. **指令确认**：综合细纲 + 状态 + 模块召回，用一句话概括本章写作意图。
+4. **字数约束**（强制）：
+   - 从 `director/chapter_queue.md` 读取本章的 `Scenes` 和 `Words` 列
+   - 若 `Words` 已设定：硬限制目标字数，超出部分自动裁剪（优先减环境描写和内心独白）
+   - 若 `Scenes` 已设定：场景数 × 800 字作为软上限
+   - 默认上限：4000 字（未设定 Scenes 和 Words 时）
+   - prompt 中强制注入：`本章字数限制：N 字。若超限，优先精简环境描写和内心独白，保留核心情节和对话。`
 
 ### 正文执行
 
