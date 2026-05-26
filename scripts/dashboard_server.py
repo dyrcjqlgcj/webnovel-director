@@ -346,8 +346,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 #chapter-table .words-col { text-align: center; font-variant-numeric: tabular-nums;
   font-size: 12px; color: var(--muted); width: 80px; }
 #chapter-table .score-col { text-align: center; font-weight: 700; width: 44px; }
-#chapter-table .time-col { width: 80px; font-size: 11px; color: var(--muted); white-space: nowrap; }
-#chapter-table .status-col { width: 55px; font-size: 12px; font-weight: 600; }
+#chapter-table .time-col { width: 80px; font-size: 11px; color: var(--muted); white-space: nowrap; text-align: center; }
+#chapter-table .status-col { width: 55px; font-size: 12px; font-weight: 600; text-align: center; }
 #chapter-table .review-col { width: 36px; text-align: center; }
 
 /* Filter row */
