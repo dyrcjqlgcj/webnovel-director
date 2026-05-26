@@ -597,6 +597,9 @@ function render(data) {
   hSt.style.background = stColors[ast] || stColors.NONE;
   hSt.style.color = stText[ast] || stText.NONE;
 
+  // Define allCh early (used by progress, stats, audits)
+  var allCh = s.chapters || [];
+
   // Volume selector
   const totalBookCh = (s.volumes || []).reduce(function(sum, v) { return sum + v.chapters; }, 0) || s.total_chapters_planned;
   document.getElementById('vol-select').innerHTML = '<option value="0">全部卷</option>' +
@@ -641,7 +644,6 @@ function render(data) {
   document.getElementById('header-progress-text').textContent = '已写/细纲/全部 ' + written + '/' + queuedChapters + '/' + planned + ' (' + pct + '%) ' + '字数' + ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
 
   // Sidebar: review stats
-  var allCh = s.chapters || [];
   document.getElementById('sb-pass').textContent = allCh.filter(function(c) { return c.review_verdict === 'PASS'; }).length;
   document.getElementById('sb-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
   document.getElementById('sb-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
