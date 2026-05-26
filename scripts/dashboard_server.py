@@ -405,7 +405,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
   <div class="status-block" id="h-status" style="background:rgba(107,114,128,0.15)">--</div>
   <div class="spacer"></div>
   <div class="header-progress">
-    <div class="progress-bg" style="height:4px;width:180px"><div class="progress-fill" id="header-progress" style="width:0%"></div></div>
+    <div class="progress-bg" style="height:4px;width:180px;display:flex">
+      <div class="progress-fill" id="header-progress" style="width:0%;background:var(--accent);border-radius:3px 0 0 3px"></div>
+      <div class="progress-fill" id="header-progress-queue" style="width:0%;background:#eab308;border-radius:0"></div>
+    </div>
     <span style="font-size:11px;color:var(--muted);margin-left:8px;white-space:nowrap" id="header-progress-text">-</span>
   </div>
   <span id="h-summary" style="font-size:10px;color:var(--muted);margin-left:12px;white-space:nowrap"></span>
@@ -630,8 +633,12 @@ function render(data) {
     if (cv) { planned = cv.chapters; written = chapters.filter(function(c) { return c.words > 0; }).length; }
   }
   var pct = planned > 0 ? Math.round(written / planned * 100) : 0;
+  var queuedChapters = allCh.length;  // total chapters in queue
+  var queueOnly = queuedChapters - written;  // queue only (not written)
+  var queuePct = planned > 0 ? Math.round(queueOnly / planned * 100) : 0;
   document.getElementById('header-progress').style.width = pct + '%';
-  document.getElementById('header-progress-text').textContent = '已写' + written + '章/共' + planned + '章 (' + pct + '%) ' + ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
+  document.getElementById('header-progress-queue').style.width = queuePct + '%';
+  document.getElementById('header-progress-text').textContent = '已写/细纲/全部 ' + written + '/' + queuedChapters + '/' + planned + ' (' + pct + '%) ' + '字数' + ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
 
   // Sidebar: review stats
   var allCh = s.chapters || [];
@@ -643,8 +650,8 @@ function render(data) {
   // Header stats
   document.getElementById('h-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
   document.getElementById('h-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
-  var nextCh = s.current_chapter || allCh.filter(function(c){return c.words>0}).length;
-  document.getElementById('h-canwrite').textContent = s.can_write ? ('下一章 ' + (nextCh + 1)) : '锁定';
+  var pending = allCh.filter(function(c) { return !c.words || c.words === 0; }).length;
+  document.getElementById('h-canwrite').textContent = '待写 ' + pending + ' 章';
 
   // Summary row
   var totalWords = allCh.reduce(function(sum, c) { return sum + (c.words || 0); }, 0);
