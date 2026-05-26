@@ -181,7 +181,12 @@ def get_project_state(book_dir: Path) -> dict:
         last_audit["status"] = "PASS" if "PASS" in audit_text else (
             "WARN" if "WARN" in audit_text else (
                 "FAIL" if "FAIL" in audit_text else "NONE"))
-        last_audit["summary"] = audit_text[:300]
+        # Strip markdown formatting for display
+        clean = re.sub(r"^#{1,6}\s+.+$", "", audit_text[:500], flags=re.MULTILINE)
+        clean = re.sub(r"```[\s\S]*?```", "", clean)
+        clean = re.sub(r"`([^`]+)`", r"\1", clean)
+        clean = re.sub(r"^[-*_]{3,}\s*$", "", clean, flags=re.MULTILINE)
+        last_audit["summary"] = clean.strip()[:200]
 
     # Foreshadowing from truth/pending_hooks.md
     hooks = []
@@ -688,6 +693,17 @@ async function doAction(action) {
             if (im) issues.push('[' + im[1] + '] ' + im[2].trim());
           }
           ch.review_issues = issues;
+          // Persist to server
+          fetch('/api/save_review', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              chapter: chNum,
+              verdict: m[1],
+              time: ch.reviewed_at,
+              issues: issues
+            })
+          }).catch(function(){});
         }
         render(STATE);
       }
@@ -837,6 +853,25 @@ document.addEventListener('DOMContentLoaded', init);
 </html>"""
 
 
+def save_review_history(book_dir: Path, data: dict) -> dict:
+    """Save chapter review result to .review_history.json"""
+    rh_path = book_dir / "director" / ".review_history.json"
+    rh = {}
+    if rh_path.exists():
+        try:
+            rh = json.loads(read(rh_path))
+        except json.JSONDecodeError:
+            pass
+    ch = str(data.get("chapter", ""))
+    rh[ch] = {
+        "time": data.get("time", ""),
+        "verdict": data.get("verdict", ""),
+        "issues": data.get("issues", []),
+    }
+    rh_path.write_text(json.dumps(rh, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"success": True}
+
+
 def save_chapter_queue(book_dir: Path, data: dict) -> dict:
     """Update a single chapter's row in chapter_queue.md."""
     cq_path = book_dir / "director" / "chapter_queue.md"
@@ -903,7 +938,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        if path == "/api/save_chapter":
+        if path == "/api/save_review":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                result = save_review_history(self.book_dir, data)
+                self._serve_json(result)
+            except Exception as e:
+                self._serve_json({"success": False, "error": str(e)})
+        elif path == "/api/save_chapter":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length).decode("utf-8")
             try:
