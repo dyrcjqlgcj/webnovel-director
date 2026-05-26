@@ -361,7 +361,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 /* Output panel */
 #output { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
   padding: 10px; font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
-  font-size: 12px; max-height: 260px; overflow-y: auto; white-space: pre-wrap;
+  font-size: 12px; height: 500px; overflow-y: auto; white-space: pre-wrap;
   margin-top: 16px; color: var(--muted); }
 
 /* Modal */
@@ -463,7 +463,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
       <div id="sb-audit"><span style="color:var(--muted);font-size:12px">--</span></div>
     </div>
 
-    <div id="output" style="height:500px;overflow-y:auto">-- 就绪 --</div>
+    <div id="output">-- 就绪 --</div>
   </div>
 </div>
 
@@ -632,6 +632,7 @@ function render(data) {
 
   // Sidebar: blockers
   var bl = document.getElementById('sb-blockers');
+  if (!bl) return;
   if ((s.blockers || []).length > 0) {
     bl.innerHTML = s.blockers.map(function(b) { return '<div class="blocker-item">' + esc(b) + '</div>'; }).join('');
   } else {
