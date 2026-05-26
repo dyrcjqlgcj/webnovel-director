@@ -737,17 +737,19 @@ async function doAction(action) {
             if (im) issues.push('[' + im[1] + '] ' + im[2].trim());
           }
           ch.review_issues = issues;
-          // Persist to server
-          fetch('/api/save_review', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-              chapter: chNum,
-              verdict: m[1],
-              time: ch.reviewed_at,
-              issues: issues
-            })
-          }).catch(function(){});
+          // Persist to server (await to avoid loss on refresh)
+          try {
+            await fetch('/api/save_review', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                chapter: chNum,
+                verdict: m[1],
+                time: ch.reviewed_at,
+                issues: issues
+              })
+            });
+          } catch(e) { console.error('Save review failed:', e); }
         }
         render(STATE);
       }

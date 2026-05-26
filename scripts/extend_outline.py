@@ -238,6 +238,26 @@ def generate(book_dir: Path, count: int) -> list[dict]:
     if new_rows:
         append_to_queue(book_dir, new_rows)
         print(f"\n已生成 {len(new_rows)} 章细纲并写入 chapter_queue")
+        
+        # Run outline-gate review on the new entries
+        print("运行 outline-gate 审查...")
+        import subprocess
+        scripts = str(SCRIPTS_DIR)
+        try:
+            result = subprocess.run(
+                [sys.executable, os.path.join(scripts, "outline_gate_review.py"), str(book_dir), "--json"],
+                capture_output=True, timeout=60,
+                env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+            )
+            output = result.stdout.decode("utf-8", errors="replace")
+            if "FAIL" in output[:500]:
+                print(f"  WARN: outline-gate 检测到 FAIL — 请人工复核后修改")
+            elif "WARN" in output[:500]:
+                print(f"  INFO: outline-gate WARN — 可接受，建议检查")
+            else:
+                print(f"  PASS: outline-gate 审查通过")
+        except Exception as e:
+            print(f"  WARN: outline-gate 无法运行 ({e})")
     return new_rows
 
 def main() -> int:
