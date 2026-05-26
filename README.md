@@ -463,7 +463,7 @@ A: 能。配置 cron + `references\cron-interface.md`，写前/写后全部自�
 A: 不会。webnovel-director 不自动发布到任何平台。
 
 **Q: 如何迁移旧项目？**
-A: webnovel-director 是调度台，inkos 是执行器之一。通过 `scripts\sync_inkos_state.py` 双向同步。
+A: 使用 `scripts\migrate_project.py` 一键迁移。
 
 **Q: 能并发写多本书吗？**
 A: 可以。每本书独立目录，独立状态。V3.0 将提供 `scripts\project_manager.py` 统一管理。
