@@ -332,7 +332,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 /* Table */
 #table-wrap { max-height: calc(100vh - 150px); overflow-y: auto; border-radius: 6px; }
 #chapter-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 14px; }
-#chapter-table th { text-align: left; padding: 8px 12px; color: var(--muted);
+#chapter-table th { text-align: center; padding: 8px 12px; color: var(--muted);
   font-weight: 500; border-bottom: 2px solid var(--border); font-size: 11px;
   letter-spacing: 0.5px; position: sticky; top: 0; background: var(--card); z-index: 1; }
 #chapter-table td { padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
@@ -342,11 +342,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 .vol-band-odd { background: rgba(99,102,241,0.04); }
 #chapter-table tbody tr:hover { background: rgba(255,255,255,0.03); }
 #chapter-table .ch-col { font-weight: 600; width: 36px; text-align: left; }
-#chapter-table .title-col { width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#chapter-table .title-col { width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 #chapter-table .words-col { text-align: center; font-variant-numeric: tabular-nums;
   font-size: 12px; color: var(--muted); width: 80px; }
 #chapter-table .score-col { text-align: center; font-weight: 700; width: 44px; }
-#chapter-table .time-col { width: 70px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+#chapter-table .time-col { width: 80px; font-size: 11px; color: var(--muted); white-space: nowrap; }
 #chapter-table .status-col { width: 55px; }
 #chapter-table .review-col { width: 36px; text-align: center; }
 
@@ -455,9 +455,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
             <th class="title-col">标题</th>
             <th class="words-col" id="th-words">字数</th>
             <th class="score-col">评分</th>
-            <th class="time-col">修改</th>
+            <th class="time-col">修改时间</th>
             <th class="status-col">审查</th>
-            <th class="time-col">时间</th>
+            <th class="time-col">审查时间</th>
             <th class="review-col"></th>
           </tr></thead>
           <tbody></tbody>
