@@ -340,7 +340,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 #chapter-table .words-col { text-align: right; font-variant-numeric: tabular-nums;
   font-size: 12px; color: var(--muted); width: 70px; }
 #chapter-table .score-col { text-align: center; font-weight: 700; width: 55px; }
-#chapter-table .status-col { width: 75px; }
+#chapter-table .time-col { width: 75px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+#chapter-table .status-col { width: 65px; }
 #chapter-table .review-col { width: 44px; text-align: center; }
 
 /* Filter row */
@@ -401,6 +402,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
   <span class="head-stat">已写 <b id="h-written">-</b> 章</span>
   <span class="head-stat" style="margin-left: 14px">字数 <b id="h-words">-</b></span>
   <span class="refresh-indicator" style="margin-left: 14px" id="refresh-hint"></span>
+  <button onclick="toggleTheme()" style="margin-left:12px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px" title="切换主题">&#9788;</button>
 </header>
 
 <div id="main">
@@ -435,7 +437,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
             <th>标题</th>
             <th class="words-col">字数</th>
             <th class="score-col">评分</th>
-            <th class="status-col">状态</th>
+            <th class="time-col">修改</th>
+            <th class="status-col">审查</th>
+            <th class="time-col">时间</th>
             <th class="review-col"></th>
           </tr></thead>
           <tbody></tbody>
@@ -513,6 +517,16 @@ let editingChapter = 0;
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+function toggleTheme() {
+  var t = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('theme', t);
+}
+(function() {
+  var t = localStorage.getItem('theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+})();
+
 function calcScore(c) {
   let s = 0;
   if (c.words > 0) s++;
@@ -533,19 +547,19 @@ function renderTable(chapters) {
     const sc = calcScore(c);
     const title = c.title || ('第' + c.chapter + '章');
     const words = (c.words || 0);
-    const status = c.status || 'QUEUE';
-    const statusColor = status.toUpperCase().includes('WRITTEN') ? '#22c55e' :
-                        status.toUpperCase().includes('WARN') ? '#eab308' :
-                        status.toUpperCase().includes('FAIL') ? '#ef4444' : '#6b7280';
-    const statusLabels = {WRITTEN:'已写', PASS:'通过', WARN:'警告', FAIL:'失败', QUEUE:'待写',
-      '待写':'待写', 'NEEDS_WRITING':'待写'};
-    const sl = statusLabels[status] || status;
+    const mtime = c.mtime || '-';
+    const rvVerdict = c.review_verdict || '';
+    const rvTime = c.reviewed_at || '-';
+    const verdictColors = {PASS:'#22c55e',WARN:'#eab308',FAIL:'#ef4444'};
+    const vLabel = {PASS:'通过',WARN:'警告',FAIL:'失败'};
     return `<tr onclick="showDetail(${c.chapter})">
       <td class="ch-col">${c.chapter}</td>
       <td>${esc(title)}</td>
       <td class="words-col">${words || '-'}</td>
       <td class="score-col" style="color:${sc.color}">${sc.grade}</td>
-      <td class="status-col"><span style="color:${statusColor};font-size:11px">${sl}</span></td>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${mtime}</td>
+      <td style="font-size:12px;font-weight:600;color:${verdictColors[rvVerdict]||'var(--muted)'}">${rvVerdict ? (vLabel[rvVerdict]||rvVerdict) : '-'}</td>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${rvTime}</td>
       <td class="review-col"><button onclick="event.stopPropagation();doAction('review_ch_${c.chapter}')" style="padding:3px 8px;font-size:11px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer">审</button></td>
     </tr>`;
   }).join('');
