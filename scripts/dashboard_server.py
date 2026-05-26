@@ -618,17 +618,27 @@ function render(data) {
   document.getElementById('sb-pending').textContent = allCh.filter(function(c) { return c.words > 0 && !c.review_verdict; }).length;
 
   // Sidebar: recent audits
+  var audDiv = document.getElementById('sb-audit');
+  var html = '';
+  // Show last_audit first
+  if (la.status && la.status !== 'NONE') {
+    var vc = {PASS: '#22c55e', WARN: '#eab308', FAIL: '#ef4444'};
+    html += '<div style="font-size:13px;font-weight:600;color:' + (vc[la.status] || 'var(--muted)') + ';margin-bottom:4px">' + (la.status === 'PASS' ? '审计通过' : la.status === 'WARN' ? '审计警告' : '审计失败') + '</div>';
+    if (la.summary) {
+      html += '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.4">' + esc(la.summary.substring(0, 120)) + '</div>';
+    }
+  }
+  // Show latest chapter reviews
   var reviewed = allCh.filter(function(c) { return c.reviewed_at; }).sort(function(a, b) {
     return (b.reviewed_at || '').localeCompare(a.reviewed_at || '');
   }).slice(0, 5);
-  var audDiv = document.getElementById('sb-audit');
   if (reviewed.length > 0) {
-    audDiv.innerHTML = reviewed.map(function(c) {
-      return '<div style="font-size:12px;padding:2px 0">第' + c.chapter + '章 <span style="color:var(--muted)">' + (c.review_verdict || '?') + '</span></div>';
+    html += reviewed.map(function(c) {
+      var vc = {PASS: '#22c55e', WARN: '#eab308', FAIL: '#ef4444'};
+      return '<div style="font-size:11px;padding:1px 0"><span style="color:' + (vc[c.review_verdict] || 'var(--muted)') + '">' + (c.review_verdict || '?') + '</span> Ch' + c.chapter + ' <span style="color:var(--muted)">' + (c.reviewed_at || '') + '</span></div>';
     }).join('');
-  } else {
-    audDiv.innerHTML = '<span style="color:var(--muted);font-size:12px">暂无</span>';
   }
+  audDiv.innerHTML = html || '<span style="color:var(--muted);font-size:12px">暂无</span>';
 
   // Sidebar: blockers
   var bl = document.getElementById('sb-blockers');
