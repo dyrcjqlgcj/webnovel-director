@@ -633,14 +633,6 @@ function render(data) {
   document.getElementById('header-progress').style.width = pct + '%';
   document.getElementById('header-progress-text').textContent = '已写' + written + '章/共' + planned + '章 (' + pct + '%) ' + ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
 
-  // Summary row
-  var totalWords = allCh.reduce(function(sum, c) { return sum + (c.words || 0); }, 0);
-  var reviewed = allCh.filter(function(c) { return c.review_verdict; }).length;
-  var passRate = reviewed > 0 ? Math.round(allCh.filter(function(c) { return c.review_verdict === 'PASS'; }).length / reviewed * 100) : 0;
-  var volLabels = (s.volumes || []).map(function(v) { return '第' + v.label + '卷'; });
-  var avgWords = written > 0 ? Math.round(totalWords / written) : 0;
-  document.getElementById('h-summary').textContent = '日均 ' + avgWords + '字 | 审查 ' + reviewed + '/' + written + ' (' + passRate + '%) | ' + (volLabels.length > 0 ? volLabels.slice(0, 2).join('·') + (volLabels.length > 2 ? '…' : '') : '');
-
   // Sidebar: review stats
   var allCh = s.chapters || [];
   document.getElementById('sb-pass').textContent = allCh.filter(function(c) { return c.review_verdict === 'PASS'; }).length;
@@ -653,6 +645,14 @@ function render(data) {
   document.getElementById('h-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
   var nextCh = s.current_chapter || allCh.filter(function(c){return c.words>0}).length;
   document.getElementById('h-canwrite').textContent = s.can_write ? ('下一章 ' + (nextCh + 1)) : '锁定';
+
+  // Summary row
+  var totalWords = allCh.reduce(function(sum, c) { return sum + (c.words || 0); }, 0);
+  var reviewedLen = allCh.filter(function(c) { return c.review_verdict; }).length;
+  var passRate = reviewedLen > 0 ? Math.round(allCh.filter(function(c) { return c.review_verdict === 'PASS'; }).length / reviewedLen * 100) : 0;
+  var volLabels = (s.volumes || []).map(function(v) { return '第' + v.label + '卷'; });
+  var avgWords = written > 0 ? Math.round(totalWords / written) : 0;
+  document.getElementById('h-summary').textContent = '日均 ' + avgWords + '字 | 审查 ' + reviewedLen + '/' + written + ' (' + passRate + '%) | ' + (volLabels.length > 0 ? volLabels.slice(0, 3).join('·') + (volLabels.length > 3 ? '…' : '') : '');
 
   // Sidebar: recent audits
   var audDiv = document.getElementById('sb-audit');
