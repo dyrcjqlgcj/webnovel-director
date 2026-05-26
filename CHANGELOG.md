@@ -1,5 +1,38 @@
 # Changelog
 
+## v2.0.0 (2026-05-26)
+
+### P0: 路径修复
+- 11 处双路径错误修复
+- 8 处 templates 路径修复
+
+### P1: 自愈引擎增强 + CI/CD
+- `scripts\director_meta_iterate.py` 增强：自动修复双路径等常见错误
+- GitHub CI：push 自动跑 `test_smoke.py` + `director_meta_iterate.py`
+
+### P2: 项目管理
+- 新增 `scripts\project_manager.py`：多书索引 + 批量 doctor + 切换活跃项目
+- 新增 `scripts\migrate_project.py`：inkos → webnovel-director 一键迁移
+- `templates\director_state.json5` 升级：加 vcs/remote/branch 字段
+
+### P3: 审查增强
+- L3 审查自动化：每 30 章/卷末自动触发 4 Agent 并行
+- 新增 `scripts\scoring_card.py`：审查评分卡 A~F + 趋势箭头
+- `scripts\validate_pacing.py` → `scripts\outline_gate_review.py` 联动拦截
+
+### P4: 仪表盘升级
+- `scripts\dashboard_server.py` CLI 模式（`--mode cli` 终端彩色面板）
+- 新增 `scripts\trend_chart.py`：章节趋势图表（字数 × 审查分 × 偏离度）
+- 一键修复按钮：批量触发 `scripts\repair_plan.py`
+
+### P5: 工具链集成
+- 新增 `scripts\concept_gate_import.py`：story-* skill 输出直通概念闸门
+- 新增 `scripts\cron_auditor.py`：自动检测 gateway cron + 失联告警
+- 封面生成联动：`build_task_package.py --with-cover`
+
+### 脚本总数
+- 21 → 27
+
 ## v1.1.0 (2026-05-25)
 
 ### 子系统自包含化（P0）

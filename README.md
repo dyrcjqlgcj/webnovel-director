@@ -1,4 +1,4 @@
-# webnovel-director — 网文导演系统 v2.0
+# webnovel-director — 网文导演系统 v2.0.0
 
 中文长篇网文的全流程调度台：从选题到完本，每一步都有闸门把关。不是替你写小说，是让小说不会写着写着就歪了。
 
@@ -54,11 +54,11 @@
 
 | 子系统 | 目录 | 角色 | Guide |
 |--------|------|------|-------|
-| **scanner** | `subsystems/scanner/` | 市场雷达——扫榜、找趋势 | `modules\chapter-review\guide.md` |
-| **analyzer** | `subsystems/analyzer/` | 拆文引擎——对标分析、提取模块 | `modules\chapter-review\guide.md` |
-| **writer** | `subsystems/writer/` | 正文执行器——方法论 + 钩子 + 禁用词 | `modules\chapter-review\guide.md` |
-| **reviewer** | `subsystems/reviewer/` | 深度审查——L1/L2/L3 分级 | `modules\chapter-review\guide.md` |
-| **polisher** | `subsystems/polisher/` | 去AI味——文字润色 | `modules\chapter-review\guide.md` |
+| **scanner** | `subsystems/scanner/` | 市场雷达——扫榜、找趋势 | `subsystems/scanner/guide.md` |
+| **analyzer** | `subsystems/analyzer/` | 拆文引擎——对标分析、提取模块 | `subsystems/analyzer/guide.md` |
+| **writer** | `subsystems/writer/` | 正文执行器——方法论 + 钩子 + 禁用词 | `subsystems/writer/guide.md` |
+| **reviewer** | `subsystems/reviewer/` | 深度审查——L1/L2/L3 分级 | `subsystems/reviewer/guide.md` |
+| **polisher** | `subsystems/polisher/` | 去AI味——文字润色 | `subsystems/polisher/guide.md` |
 
 所有子系统**自包含完整方法论**，从 GitHub clone 后无需安装任何外部 skill，即装即用。
 
@@ -87,9 +87,12 @@
 | 脚本 | 用途 | 写正文 |
 |------|------|:----:|
 | `scripts\concept_gate.py` | 六维概念验证打分 | 否 |
+| `scripts\concept_gate_import.py` | story-* 输出直通概念闸门 | 否 |
 | `scripts\init_project.py` | 初始化 director/truth 骨架 | 否 |
 | `scripts\director_doctor.py` | 一键体检项目状态/队列/闸门 | 否 |
 | `scripts\extract_premise.py` | 从 story 文件自动生成 premise 初稿 | 否 |
+| `scripts\project_manager.py` | 多书索引 + 批量 doctor + 切换活跃项目 | 否 |
+| `scripts\migrate_project.py` | inkos → webnovel-director 一键迁移 | 否 |
 | `scripts\outline_gate_review.py` | 逐章六维审查报告 | 否 |
 | `scripts\outline_causal_check.py` | 因果链/爽点密度/角色弧线/力量曲线 | 否 |
 | `scripts\outline_iterate.py` | 检查→分组→LLM修复→重查→循环至 PASS | 否 |
@@ -98,15 +101,18 @@
 | `scripts\audit_chapters.py` | 快速章节关键词审计 | 否 |
 | `scripts\review_chapter.py` | 正文→任务包对照 L1 审查报告 | 否 |
 | `scripts\review_parallel.py` | 4 子 Agent 并行审查 + 交叉矛盾检测 | 否 |
+| `scripts\scoring_card.py` | 审查评分卡 A~F + 趋势箭头 | 否 |
 | `scripts\post_writeback.py` | 审查后回写 director/truth | 否 |
 | `scripts\repair_plan.py` | FAIL/WARN 自动分级 R0-R4 + 修复步骤 | 否 |
 | `scripts\director_meta_iterate.py` | webnovel-director 自身审计 + 迭代修复 | 否 |
 | `scripts\validate_relationships.py` | 检查关系图因果边完整性 | 否 |
 | `scripts\validate_pacing.py` | 细纲进度 vs 卷纲 pace 对齐检测 | 否 |
 | `scripts\check_cron_prompt.py` | 检查 cron prompt 是否绕过 director | 否 |
+| `scripts\cron_auditor.py` | 自动检测 gateway cron + 失联告警 | 否 |
 | `scripts\sync_inkos_state.py` | inkos 项目状态同步 | 否 |
 | `scripts\test_smoke.py` | 全链路冒烟测试 | 否 |
 | `scripts\dashboard_server.py` | Web 仪表盘：项目状态/审查色块/一键操作 | 否 |
+| `scripts\trend_chart.py` | 章节趋势图表：字数 × 审查分 × 偏离度 | 否 |
 
 > 安全边界：以上全部脚本**不写正文**。正文只能由 writer 子系统在闸门通过后生成。
 
@@ -256,11 +262,14 @@ webnovel-director/
 │   ├── reviewer/                 #   深度审查 → modules\chapter-review\guide.md + rubric
 │   └── polisher/                 #   去AI味 → modules\chapter-review\guide.md + 共享 craft
 │
-├── scripts/                      # 21 个可执行脚本（均不写正文）
+├── scripts/                      # 27 个可执行脚本（均不写正文）
 │   ├── scripts\concept_gate.py           # 概念验证
+│   ├── scripts\concept_gate_import.py     # 概念导入
 │   ├── init_project.py           # 项目初始化
 │   ├── director_doctor.py        # 一键体检
 │   ├── extract_premise.py        # 自动生成 premise
+│   ├── project_manager.py        # 多书管理
+│   ├── migrate_project.py        # 项目迁移
 │   ├── scripts\outline_gate_review.py    # 大纲六维审查
 │   ├── outline_causal_check.py   # 逻辑验证
 │   ├── outline_iterate.py        # 迭代修复引擎
@@ -269,14 +278,17 @@ webnovel-director/
 │   ├── audit_chapters.py         # 快速关键词审计
 │   ├── review_chapter.py         # L1 审查
 │   ├── review_parallel.py        # 4 Agent 并行
+│   ├── scoring_card.py           # 评分卡
 │   ├── post_writeback.py         # 写后回写
 │   ├── scripts\repair_plan.py            # R0-R4 修复
 │   ├── scripts\director_meta_iterate.py  # 项目自检
 │   ├── validate_relationships.py # 关系图验证
 │   ├── scripts\validate_pacing.py        # 节奏验证
 │   ├── check_cron_prompt.py      # cron 审计
+│   ├── cron_auditor.py           # cron 自动检测
 │   ├── scripts\sync_inkos_state.py       # inkos 同步
 │   ├── scripts\test_smoke.py             # 冒烟测试
+│   ├── scripts\trend_chart.py             # 趋势图表
 │   └── scripts\dashboard_server.py       # Web 仪表盘
 │
 ├── references/                   # 架构/接口/集成文档
@@ -362,20 +374,22 @@ python scripts\dashboard_server.py    # 启动 Web 仪表盘（默认 http://loc
 
 | 优先级 | 能力 | 状态 |
 |:---:|------|:---:|
-| **P1** | `scripts\director_meta_iterate.py` 增强：自动修复双路径等常见错误 | 📋 |
-| **P1** | CI/CD：push 自动跑 `scripts\test_smoke.py` + `scripts\director_meta_iterate.py` | 📋 |
-| **P2** | `scripts\project_manager.py`：多书索引 + 批量 doctor + 切换活跃项目 | 📋 |
-| **P2** | `scripts\migrate_project.py`：inkos → webnovel-director 一键迁移 | 📋 |
-| **P2** | `templates\director_state.json5` 升级：加 vcs/remote/branch 字段 | 📋 |
-| **P3** | L3 审查自动化：每 30 章/卷末自动触发 4 Agent 并行 | 📋 |
-| **P3** | 审查评分卡：A~F + 趋势箭头替代纯 P/W/F | 📋 |
-| **P3** | `scripts\validate_pacing.py` → `scripts\outline_gate_review.py` 联动拦截 | 📋 |
-| **P4** | `scripts\dashboard_server.py` CLI 模式（`--mode cli` 终端彩色面板） | 📋 |
-| **P4** | 章节趋势图表：字数 × 审查分 × 偏离度 三线同屏 | 📋 |
-| **P4** | 一键修复按钮：批量触发 `scripts\repair_plan.py` | 📋 |
-| **P5** | story-* skill 输出直通 `scripts\concept_gate.py` | 📋 |
-| **P5** | `references\cron-interface.md` 升级：自动检测 gateway cron + 失联告警 | 📋 |
-| **P5** | 封面生成联动：`build_task_package.py --with-cover` | 📋 |
+| **P1** | `scripts\director_meta_iterate.py` 增强：自动修复双路径等常见错误 | ✅ |
+| **P1** | CI/CD：push 自动跑 `scripts\test_smoke.py` + `scripts\director_meta_iterate.py` | ✅ |
+| **P2** | `scripts\project_manager.py`：多书索引 + 批量 doctor + 切换活跃项目 | ✅ |
+| **P2** | `scripts\migrate_project.py`：inkos → webnovel-director 一键迁移 | ✅ |
+| **P2** | `templates\director_state.json5` 升级：加 vcs/remote/branch 字段 | ✅ |
+| **P3** | L3 审查自动化：每 30 章/卷末自动触发 4 Agent 并行 | ✅ |
+| **P3** | 审查评分卡：A~F + 趋势箭头替代纯 P/W/F | ✅ |
+| **P3** | `scripts\validate_pacing.py` → `scripts\outline_gate_review.py` 联动拦截 | ✅ |
+| **P4** | `scripts\dashboard_server.py` CLI 模式（`--mode cli` 终端彩色面板） | ✅ |
+| **P4** | 章节趋势图表：字数 × 审查分 × 偏离度 三线同屏 | ✅ |
+| **P4** | 一键修复按钮：批量触发 `scripts\repair_plan.py` | ✅ |
+| **P5** | story-* skill 输出直通 `scripts\concept_gate.py` | ✅ |
+| **P5** | `scripts\concept_gate_import.py`：story-* 输出直通概念闸门 | ✅ |
+| **P5** | `references\cron-interface.md` 升级：自动检测 gateway cron + 失联告警 | ✅ |
+| **P5** | `scripts\cron_auditor.py`：自动检测 gateway cron + 失联告警 | ✅ |
+| **P5** | 封面生成联动：`build_task_package.py --with-cover` | ✅ |
 
 ---
 

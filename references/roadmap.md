@@ -12,7 +12,7 @@
 | 写后回写 | `scripts\post_writeback.py` | ✅ |
 | cron 审计 | `scripts\check_cron_prompt.py` | ✅ |
 | 关键词快筛 | `scripts\audit_chapters.py` | ✅ |
-| 模块文档 | 8 modules × 5 files | ✅ |
+| 模块文档 | 9 modules × 5 files | ✅ |
 | 操作入口 | `references/operations.md` | ✅ |
 
 ## 还缺什么
