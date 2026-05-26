@@ -14,5 +14,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
+      - run: python -m compileall scripts/
+      - run: pip install pylint && pylint scripts/*.py --disable=all --enable=E,F --exit-zero
       - run: python scripts/director_meta_iterate.py --max-rounds 2 --no-llm
       - run: python scripts/test_smoke.py
