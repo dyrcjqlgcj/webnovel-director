@@ -396,8 +396,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
   <h1 id="h-title">载入中...</h1>
   <div class="status-block" id="h-status" style="background:rgba(107,114,128,0.15)">--</div>
   <div class="spacer"></div>
-  <span class="head-stat">已写 <b id="h-written">-</b> 章</span>
-  <span class="head-stat" style="margin-left: 14px">字数 <b id="h-words">-</b></span>
+  <div class="header-progress">
+    <div class="progress-bg" style="height:4px;width:180px"><div class="progress-fill" id="header-progress" style="width:0%"></div></div>
+    <span style="font-size:11px;color:var(--muted);margin-left:8px;white-space:nowrap" id="header-progress-text">-</span>
+  </div>
   <span class="refresh-indicator" style="margin-left: 14px" id="refresh-hint"></span>
   <button onclick="toggleTheme()" style="margin-left:12px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px" title="切换主题">&#9788;</button>
 </header>
@@ -444,18 +446,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
       </div>
     </div>
 
-    <div id="output">-- 就绪 --</div>
   </div>
 
   <!-- Sidebar -->
   <div id="sidebar">
-    <div class="card">
-      <h2>进度</h2>
-      <div class="progress-bg"><div class="progress-fill" id="progress-bar" style="width:0%"></div></div>
-      <div class="stat-row"><span>章节</span><span class="val" id="sb-chapters">-</span></div>
-      <div class="stat-row"><span>总字数</span><span class="val" id="sb-words">-</span></div>
-    </div>
-
     <div class="card">
       <h2>审查统计</h2>
       <div class="stat-row"><span>PASS</span><span class="val" style="color:var(--pass)" id="sb-pass">0</span></div>
@@ -465,14 +459,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
     </div>
 
     <div class="card">
-      <h2>最近审计</h2>
-      <div id="sb-audit"><span style="color:var(--muted);font-size:12px">-</span></div>
-    </div>
-
-    <div class="card">
       <h2>阻塞项</h2>
       <div id="sb-blockers"><span style="color:var(--pass);font-size:12px">无</span></div>
     </div>
+
+    <div id="output">-- 就绪 --</div>
   </div>
 </div>
 
@@ -580,9 +571,6 @@ function render(data) {
   hSt.style.background = stColors[ast] || stColors.NONE;
   hSt.style.color = stText[ast] || stText.NONE;
 
-  document.getElementById('h-written').textContent = s.total_chapters_written || 0;
-  document.getElementById('h-words').textContent = ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
-
   // Volume selector
   const totalBookCh = (s.volumes || []).reduce(function(sum, v) { return sum + v.chapters; }, 0) || s.total_chapters_planned;
   document.getElementById('vol-select').innerHTML = '<option value="0">全部卷</option>' +
@@ -612,16 +600,15 @@ function render(data) {
   // Chapter table
   document.querySelector('#chapter-table tbody').innerHTML = renderTable(chapters.slice(0, 60));
 
-  // Sidebar: progress
+  // Header progress bar
   var planned = totalBookCh, written = s.total_chapters_written;
   if (currentVolume > 0) {
     var cv = (s.volumes || []).find(function(v) { return v.start === currentVolume; });
     if (cv) { planned = cv.chapters; written = chapters.filter(function(c) { return c.words > 0; }).length; }
   }
   var pct = planned > 0 ? Math.round(written / planned * 100) : 0;
-  document.getElementById('progress-bar').style.width = pct + '%';
-  document.getElementById('sb-chapters').textContent = written + ' / ' + planned + ' (' + pct + '%)';
-  document.getElementById('sb-words').textContent = ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
+  document.getElementById('header-progress').style.width = pct + '%';
+  document.getElementById('header-progress-text').textContent = written + '/' + planned + ' (' + pct + '%) ' + ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
 
   // Sidebar: review stats
   var allCh = s.chapters || [];
@@ -629,25 +616,6 @@ function render(data) {
   document.getElementById('sb-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
   document.getElementById('sb-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
   document.getElementById('sb-pending').textContent = allCh.filter(function(c) { return c.words > 0 && !c.review_verdict; }).length;
-
-  // Sidebar: recent audits (from chapter review history)
-  var reviewed = allCh.filter(function(c) { return c.reviewed_at; }).sort(function(a, b) {
-    return (b.reviewed_at || '').localeCompare(a.reviewed_at || '');
-  }).slice(0, 8);
-  var audDiv = document.getElementById('sb-audit');
-  if (reviewed.length > 0) {
-    audDiv.innerHTML = reviewed.map(function(c) {
-      var vc = {PASS: '#22c55e', WARN: '#eab308', FAIL: '#ef4444'};
-      return '<div class="audit-entry"><span style="color:' + (vc[c.review_verdict] || 'var(--muted)') + ';font-weight:600">' + (c.review_verdict || '?') + '</span> 第' + c.chapter + '章 <span class="time">' + c.reviewed_at + '</span></div>';
-    }).join('');
-    if (la.summary) {
-      audDiv.innerHTML += '<div class="audit-entry" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;color:var(--muted);font-size:11px">' + esc(la.summary.substring(0, 150)) + '</div>';
-    }
-  } else if (la.summary) {
-    audDiv.innerHTML = '<div style="font-size:12px;color:var(--muted)">' + esc(la.summary.substring(0, 200)) + '</div>';
-  } else {
-    audDiv.innerHTML = '<span style="color:var(--muted);font-size:12px">暂无记录</span>';
-  }
 
   // Sidebar: blockers
   var bl = document.getElementById('sb-blockers');
