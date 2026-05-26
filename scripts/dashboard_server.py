@@ -521,18 +521,19 @@ function toggleTheme() {
 })();
 
 function calcScore(c) {
+  // No score for unreviewed chapters
+  if (!c.review_verdict) return {grade:'', color:'#6b7280'};
   let s = 0;
   if (c.words > 0) s++;
   if (c.goal && c.goal.length > 3 && c.goal !== '未设定') s++;
   if (c.premise_hit && c.premise_hit.length > 3 && c.premise_hit !== '未设定') s++;
   if (c.review_verdict === 'PASS') s += 2;
   else if (c.review_verdict === 'WARN') s++;
-  else if (c.words > 0) s++;
   if (s >= 5) return {grade:'A', color:'#22c55e'};
   if (s >= 4) return {grade:'B', color:'#10b981'};
   if (s >= 3) return {grade:'C', color:'#eab308'};
   if (s >= 2) return {grade:'D', color:'#f97316'};
-  return {grade:'-', color:'#6b7280'};
+  return {grade:'', color:'#6b7280'};
 }
 
 function renderTable(chapters) {
@@ -551,7 +552,7 @@ function renderTable(chapters) {
       <td class="words-col">${words || '-'}</td>
       <td class="score-col" style="color:${sc.color}">${sc.grade}</td>
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${mtime}</td>
-      <td style="font-size:12px;font-weight:600;color:${verdictColors[rvVerdict]||'var(--muted)'}">${rvVerdict ? (vLabel[rvVerdict]||rvVerdict) : '-'}</td>
+      <td style="font-size:12px;font-weight:600;color:${verdictColors[rvVerdict]||'var(--muted)'}">${rvVerdict ? (vLabel[rvVerdict]||rvVerdict) : (words > 0 ? '已写' : '-')}</td>
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${rvTime}</td>
       <td class="review-col"><button onclick="event.stopPropagation();doAction('review_ch_${c.chapter}')" style="padding:3px 8px;font-size:11px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer">审</button></td>
     </tr>`;
@@ -686,7 +687,8 @@ async function doAction(action) {
           ch.reviewed_at = (now.getMonth()+1).toString().padStart(2,'0') + '-' +
                            now.getDate().toString().padStart(2,'0') + ' ' +
                            now.getHours().toString().padStart(2,'0') + ':' +
-                           now.getMinutes().toString().padStart(2,'0');
+                           now.getMinutes().toString().padStart(2,'0') + ':' +
+                           now.getSeconds().toString().padStart(2,'0');
           ch.review_verdict = m[1];
           const issues = [];
           for (const line of (d.output || '').split('\n')) {
