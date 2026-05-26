@@ -200,7 +200,11 @@ def rebuild_queue(book_dir: Path):
     header = "# Chapter Queue\n\n> 只放已经通过 outline-gate 的待写章节。\n\n| Chapter | Title Hint | Goal | Premise Must Hit | Scenes | Words | Forbidden | Status |\n|---:|---|---|---:|---:|---|---|\n"
 
     lines = [header]
+    seen = set()
+
+    # First: add chapters with actual files (status WRITTEN)
     for ch_num in sorted(ch_files.keys()):
+        seen.add(ch_num)
         f = ch_files[ch_num]
         _, title = parse_chapter_name(f.name)
         chars = count_chars(f)
@@ -227,6 +231,16 @@ def rebuild_queue(book_dir: Path):
         row = {"ch": ch_num, "title": title, "goal": goal, "premise": premise,
                "scenes": "", "words": str(chars), "forbidden": forbidden, "status": "WRITTEN"}
         lines.append(format_queue_row(row))
+
+    # Then: preserve QUEUE chapters from old queue (no actual files but have outline)
+    for ch_num in sorted(old_rows.keys()):
+        if ch_num not in seen and old_rows[ch_num]["status"].upper() in ("QUEUE", "待写"):
+            seen.add(ch_num)
+            orow = old_rows[ch_num]
+            row = {"ch": ch_num, "title": orow["title"], "goal": orow["goal"],
+                   "premise": orow["premise"], "scenes": orow["scenes"],
+                   "words": "0", "forbidden": orow["forbidden"], "status": "QUEUE"}
+            lines.append(format_queue_row(row))
 
     write_text(qp, "\n".join(lines) + "\n")
 
