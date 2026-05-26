@@ -288,11 +288,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>网文导演仪表盘</title>
 <style>
-:root {
-  --bg: #0d1117; --card: #161b22; --border: #30363d;
-  --text: #e6edf3; --muted: #8b949e; --accent: #3b82f6;
-  --pass: #22c55e; --warn: #eab308; --fail: #ef4444;
-}
+:root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #e6edf3; --muted: #8b949e; --accent: #3b82f6; --pass: #22c55e; --warn: #eab308; --fail: #ef4444; }
+[data-theme="light"] { --bg: #f6f8fa; --card: #ffffff; --border: #d0d7de; --text: #1f2328; --muted: #656d76; --accent: #0969da; --pass: #1a7f37; --warn: #9a6700; --fail: #cf222e; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
   background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.5; }
