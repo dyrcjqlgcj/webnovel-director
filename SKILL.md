@@ -103,7 +103,7 @@ description: |
 | `scripts\review_parallel.py` | 4 子 Agent 并行审查 + 交叉矛盾检测 | 否 |
 | `scripts\post_writeback.py` | 写后根据审查结果回写 director/truth | 否 |
 | `scripts\repair_plan.py` | FAIL/WARN 自动分级 R0-R4 + 修复步骤 | 否 |
-| `scripts\sync_inkos_state.py` | 同步 inkos 风格项目到 director state | 否 |
+| `scripts\sync_旧项目_state.py` | 同步 旧项目 风格项目到 director state | 否 |
 | `scripts\director_meta_iterate.py` | webnovel-director 自检+迭代修复引擎 | 否 |
 | `scripts\validate_relationships.py` | 检查关系图因果边完整性 | 否 |
 | `scripts\check_cron_prompt.py` | 检查 cron prompt 是否绕过 director | 否 |

@@ -92,7 +92,7 @@
 | `scripts\director_doctor.py` | 一键体检项目状态/队列/闸门 | 否 |
 | `scripts\extract_premise.py` | 从 story 文件自动生成 premise 初稿 | 否 |
 | `scripts\project_manager.py` | 多书索引 + 批量 doctor + 切换活跃项目 | 否 |
-| `scripts\migrate_project.py` | inkos → webnovel-director 一键迁移 | 否 |
+| `scripts\migrate_project.py` | 旧项目 → webnovel-director 迁移 | 否 |
 | `scripts\outline_gate_review.py` | 逐章六维审查报告 | 否 |
 | `scripts\outline_causal_check.py` | 因果链/爽点密度/角色弧线/力量曲线 | 否 |
 | `scripts\outline_iterate.py` | 检查→分组→LLM修复→重查→循环至 PASS | 否 |
@@ -109,7 +109,7 @@
 | `scripts\validate_pacing.py` | 细纲进度 vs 卷纲 pace 对齐检测 | 否 |
 | `scripts\check_cron_prompt.py` | 检查 cron prompt 是否绕过 director | 否 |
 | `scripts\cron_auditor.py` | 自动检测 gateway cron + 失联告警 | 否 |
-| `scripts\sync_inkos_state.py` | inkos 项目状态同步 | 否 |
+| `scripts\sync_inkos_state.py` | 旧项目状态同步 | 否 |
 | `scripts\test_smoke.py` | 全链路冒烟测试 | 否 |
 | `scripts\dashboard_server.py` | Web 仪表盘：项目状态/审查色块/一键操作 | 否 |
 | `scripts\trend_chart.py` | ASCII 三线趋势图（字数/审查分/偏离度） | 否 |
@@ -124,7 +124,7 @@
 
 - Python ≥ 3.11
 - 可访问 OpenAI 兼容 API 的 LLM（配置 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL`）
-- 可选：inkos CLI（用于旧项目迁移）
+- 可选：用于旧项目迁移
 
 ### 安装
 
@@ -169,10 +169,10 @@ python scripts\build_task_package.py .\我的小说 --chapter 1
 # → post_writeback 回写状态
 ```
 
-### 旧 inkos 项目接入
+### 旧项目接入
 
 ```bash
-python scripts\sync_inkos_state.py .\我的旧书 --write
+python scripts\migrate_project.py .\我的旧书
 python scripts\extract_premise.py .\我的旧书
 scripts\director_doctor.py .\我的旧书
 ```
@@ -287,7 +287,7 @@ webnovel-director/
 │   ├── scripts\validate_pacing.py        # 节奏验证
 │   ├── check_cron_prompt.py      # cron 审计
 │   ├── cron_auditor.py           # cron 自动检测
-│   ├── scripts\sync_inkos_state.py       # inkos 同步
+│   ├── scripts\sync_inkos_state.py       # 旧项目同步
 │   ├── scripts\test_smoke.py             # 冒烟测试
 │   ├── scripts\trend_chart.py             # 趋势图表
 │   └── scripts\dashboard_server.py       # Web 仪表盘
@@ -371,6 +371,60 @@ python scripts\dashboard_server.py    # 启动 Web 仪表盘（默认 http://loc
 
 ---
 
+
+---
+
+## 核心功能详解
+
+### 选题阶段
+| 功能 | 脚本 | 说明 |
+|------|------|------|
+| 概念验证 | `concept_gate.py` | 六维打分：主角不可替代性 / 爽点可见性 / 持续可写性 / 市场匹配 / 差异化 / 金手指梯度。低于70分自动拦截 |
+| 细纲生成 | `generate_outline_queue.py` | 从卷纲自动生成 chapter_queue 骨架 |
+| 细纲扩展 | `extend_outline.py` | 自动调用 LLM 生成后续细纲，附带 outline-gate 验证 |
+
+### 大纲阶段
+| 功能 | 脚本 | 说明 |
+|------|------|------|
+| 六维审查 | `outline_gate_review.py` | 逐章检查：Goal存在 / 禁飞区触犯 / 命题贴合 / 可执行性 / 钩子回收 / 衔接 |
+| 逻辑验证 | `outline_causal_check.py` | 因果链断裂 / 爽点密度 / 角色弧线 / 力量曲线 |
+| 迭代推理 | `outline_iterate.py` | 发现问题→分组→LLM推理修复→重查→循环至 PASS |
+
+### 写作阶段
+| 功能 | 脚本 | 说明 |
+|------|------|------|
+| 任务包派发 | `build_task_package.py` | 大纲闸门全 PASS 后，生成写作任务包派发 writer 子系统 |
+| 字数检查 | `check_wordcount.py` | 字数超 4000 自动拆章（上/中/下/一/二/三），继承目标命题，后移细纲 |
+
+### 审查阶段
+| 功能 | 脚本 | 说明 |
+|------|------|------|
+| 逐章审查 | `review_chapter.py` | 正文 vs 任务包 L1 审查：禁飞区 / 命题贴合 / 字数 / 钩子 |
+| 并行深审 | `review_parallel.py` | 4 Agent 并行：命题 / 一致性 / 结构 / 伏笔，每30章/卷末触发 |
+| 评分卡 | `scoring_card.py` | A~F 五档评分 + ↑↓→ 趋势箭头 |
+| 修复计划 | `repair_plan.py` | FAIL → R0~R4 自动分级修复，R0/R1 可自动应用 |
+| 写后回写 | `post_writeback.py` | 审查结果回写 director/truth，更新章节状态 |
+
+### 项目管理
+| 功能 | 脚本 | 说明 |
+|------|------|------|
+| 一键体检 | `director_doctor.py` | 项目全景健康：状态 / 队列 / 闸门 / 脚本语法 |
+| 多书管理 | `project_manager.py` | 扫描 / 切换 / 体检 / 新建项目 |
+| 项目迁移 | `migrate_project.py` | 旧项目一键迁移到 webnovel-director 结构 |
+| 节奏检测 | `validate_pacing.py` | 细纲进度 vs 卷纲 pace 对齐检测 |
+| 关系验证 | `validate_relationships.py` | 人物关系图因果边完整性检查 |
+| Cron 审计 | `cron_auditor.py` | Gateway 定时任务审计 |
+| 自检引擎 | `director_meta_iterate.py` | webnovel-director 自身审计 + 迭代修复 |
+
+### 工具与仪表盘
+| 功能 | 脚本 | 说明 |
+|------|------|------|
+| Web 仪表盘 | `dashboard_server.py` | 浏览器一键操作 + 进度 + 评分 + 趋势 |
+| CLI 面板 | `dashboard_server.py --mode cli` | 终端彩色面板，支持自动刷新 |
+| 趋势图 | `trend_chart.py` | ASCII 三线同屏：字数 / 审查分 / 偏离度 |
+| 概念导入 | `concept_gate_import.py` | 扫榜结果直通概念验证 |
+| 封面生成 | `build_task_package.py --with-cover` | 自动生成封面 prompt |
+| 冒烟测试 | `test_smoke.py` | 全链路 10 步集成测试 |
 ## V3.0 路线图
 
 | 优先级 | 能力 | 状态 |
@@ -378,7 +432,7 @@ python scripts\dashboard_server.py    # 启动 Web 仪表盘（默认 http://loc
 | **P1** | `scripts\director_meta_iterate.py` 增强：自动修复双路径等常见错误 | ✅ |
 | **P1** | CI/CD：push 自动跑 `scripts\test_smoke.py` + `scripts\director_meta_iterate.py` | ✅ |
 | **P2** | `scripts\project_manager.py`：多书索引 + 批量 doctor + 切换活跃项目 | ✅ |
-| **P2** | `scripts\migrate_project.py`：inkos → webnovel-director 一键迁移 | ✅ |
+| **P2** | `scripts\migrate_project.py`：旧项目 → webnovel-director 迁移 | ✅ |
 | **P2** | `templates\director_state.json5` 升级：加 vcs/remote/branch 字段 | ✅ |
 | **P3** | L3 审查自动化：每 30 章/卷末自动触发 4 Agent 并行 | ✅ |
 | **P3** | 审查评分卡：A~F + 趋势箭头替代纯 P/W/F | ✅ |
@@ -408,7 +462,7 @@ A: 能。配置 cron + `references\cron-interface.md`，写前/写后全部自�
 **Q: 会自己发章节吗？**
 A: 不会。webnovel-director 不自动发布到任何平台。
 
-**Q: 和 inkos 的关系？**
+**Q: 如何迁移旧项目？**
 A: webnovel-director 是调度台，inkos 是执行器之一。通过 `scripts\sync_inkos_state.py` 双向同步。
 
 **Q: 能并发写多本书吗？**

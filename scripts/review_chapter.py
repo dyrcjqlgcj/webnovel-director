@@ -91,12 +91,18 @@ def check_length(text: str, target: int = 2500) -> dict:
     return {"pass":True, "issue":f"≈{words_est}字", "severity":"PASS"}
 
 def check_hook(text: str) -> dict:
-    tail = text[-400:] if len(text) > 400 else text
-    hook_markers = ["？", "!", "…", "——", "不再", "开始", "将要", "回头", "发现", "突然", "不是", "原来"]
-    hits = sum(1 for m in hook_markers if m in tail)
-    if hits >= 2: return {"pass":True, "issue":"", "severity":"PASS"}
-    if hits >= 1: return {"pass":True, "issue":"章末钩子弱，建议增加转折/悬念", "severity":"WARN"}
-    return {"pass":False, "issue":"章末 400 字未检测到钩子标记", "severity":"FAIL"}
+    tail = text[-600:] if len(text) > 600 else text
+    # Weighted hook markers: strong(2pts) vs weak(1pt)
+    strong = ["？", "!", "突然", "不是", "原来", "竟然", "居然", "只见"]
+    weak = ["…", "——", "不再", "开始", "将要", "回头", "发现", "然而", "可是"]
+    score = sum(2 for m in strong if m in tail) + sum(1 for m in weak if m in tail)
+    # Also check paragraph count in tail (cliffhanger = short final paragraph)
+    paras = [p for p in tail.split("\n\n") if p.strip()]
+    if paras and len(paras[-1]) < 100:
+        score += 1  # Short final paragraph = strong cliffhanger signal
+    if score >= 4: return {"pass":True, "issue":"", "severity":"PASS"}
+    if score >= 2: return {"pass":True, "issue":"章末钩子偏弱，建议增加反转/疑问/悬念", "severity":"WARN"}
+    return {"pass":False, "issue":"章末 600 字未检测到有效钩子", "severity":"FAIL"}
 
 def check_forbidden(text: str, forbidden: list[str]) -> dict:
     hits = []
