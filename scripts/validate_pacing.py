@@ -281,15 +281,83 @@ def validate(book_dir: str) -> dict:
     }
 
 
+def compute_pacing_rate(chapters: list[dict], vol_start: int, vol_end: int) -> float:
+    """Compute layers-per-10-chapters rate for chapters within a volume range.
+
+    Returns (layers_per_10_chapters, actual_layers_count, chapter_count)
+    """
+    vol_chapters = [c for c in chapters if vol_start <= c["chapter"] <= vol_end]
+    if not vol_chapters:
+        return 0.0, 0, 0
+    # Extract all layer numbers mentioned in these chapters
+    layers_seen = set()
+    for ch in vol_chapters:
+        combined = f"{ch['title']} {ch['goal']}"
+        for m in re.finditer(r"第\s*(\d+)\s*层", combined):
+            layers_seen.add(int(m.group(1)))
+    layer_count = len(layers_seen)
+    ch_count = len(vol_chapters)
+    rate = (layer_count / ch_count) * 10 if ch_count > 0 else 0.0
+    return rate, layer_count, ch_count
+
+
+def compute_pacing_drift(chapters: list[dict], volumes: list[dict]) -> list[dict]:
+    """Detect pacing drift by comparing queue progression rates vs volume_map definitions.
+
+    Drift = (actual_rate - expected_rate) / expected_rate * 100
+    Positive = progressing faster than planned
+    Negative = progressing slower than planned
+
+    Returns list of drift records for volumes with significant deviation.
+    """
+    drifts = []
+    for vol in volumes:
+        expected_layers = len(vol.get("boss_layers", []))
+        expected_chapters = vol["end"] - vol["start"] + 1
+        expected_rate = (expected_layers / expected_chapters) * 10 if expected_chapters > 0 else 0.0
+
+        actual_rate, actual_layers, actual_chs = compute_pacing_rate(
+            chapters, vol["start"], vol["end"]
+        )
+
+        if expected_rate == 0 and actual_rate == 0:
+            continue
+        if expected_rate == 0:
+            drift_pct = 100.0 if actual_rate > 0 else 0.0
+        else:
+            drift_pct = ((actual_rate - expected_rate) / expected_rate) * 100
+
+        drifts.append({
+            "volume": vol["volume"],
+            "label": vol.get("label", f"第{vol['volume']}卷"),
+            "range": f"Ch{vol['start']}-{vol['end']}",
+            "expected_rate": round(expected_rate, 2),
+            "actual_rate": round(actual_rate, 2),
+            "drift_pct": round(drift_pct, 1),
+            "expected_layers": expected_layers,
+            "actual_layers": actual_layers,
+        })
+    return drifts
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("book_dir")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--with-outline-gate", action="store_true",
+                    help="Detect pacing drift >50% and produce outline-gate suggestions")
     args = ap.parse_args()
 
     result = validate(args.book_dir)
 
     if args.json:
+        # Include drift data when --with-outline-gate is used
+        if args.with_outline_gate and result.get("queue_chapters", 0) > 0:
+            volumes = parse_volumes(vm_text)
+            chapters = parse_chapter_queue(cq_path)
+            drifts = compute_pacing_drift(chapters, volumes)
+            result["pacing_drift"] = drifts
+            result["pacing_blocked"] = any(abs(d["drift_pct"]) > 50 for d in drifts)
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print(f"=== 进度验证报告 ===")
@@ -311,6 +379,63 @@ def main() -> int:
         for i in result["issues"]:
             icon = "[FAIL]" if i["severity"] == "FAIL" else "[WARN]"
             print(f"  {icon} {i['issue']}")
+
+        # ── Outline-gate drift detection ──
+        if args.with_outline_gate and result.get("queue_chapters", 0) > 0:
+            # Re-parse volumes for pacing rate comparison
+            volumes = parse_volumes(vm_text)
+            chapters = parse_chapter_queue(cq_path)
+            drifts = compute_pacing_drift(chapters, volumes)
+
+            had_block = False
+            for d in drifts:
+                if abs(d["drift_pct"]) > 50:
+                    had_block = True
+                    direction = "过快" if d["drift_pct"] > 0 else "过慢"
+                    drift_sign = "+" if d["drift_pct"] > 0 else ""
+                    print()
+                    print(f"[PACING BLOCK] 节奏漂移: 当前{d['actual_layers']}层/{d['actual_rate']:.1f}层/10章, "
+                          f"目标{d['expected_layers']}层/{d['expected_rate']:.1f}层/10章, "
+                          f"偏差{drift_sign}{d['drift_pct']:.0f}% ({direction})")
+                    print(f"  卷{d['volume']} ({d['range']}): 预期{d['expected_layers']}层,"
+                          f" 实际观察{d['actual_layers']}层")
+
+            if had_block:
+                # Auto-suggest via outline_gate_review import
+                print()
+                print("--- outline-gate 建议（未实际执行，仅供参考） ---")
+                try:
+                    import subprocess
+                    og_script = Path(__file__).resolve().parent / "outline_gate_review.py"
+                    if og_script.exists():
+                        proc = subprocess.run(
+                            [sys.executable, str(og_script), str(args.book_dir),
+                             "--write-report"],
+                            capture_output=True, text=True, timeout=120
+                        )
+                        # Extract key suggestions from outline_gate output
+                        suggestions = []
+                        for line in proc.stdout.splitlines():
+                            if "WARN" in line or "FAIL" in line or "建议" in line or "下一步" in line:
+                                stripped = line.strip()
+                                if stripped:
+                                    suggestions.append(stripped)
+                        if suggestions:
+                            print(f"  outline_gate_review 输出 ({len(suggestions)} 条):")
+                            for s in suggestions[:20]:
+                                print(f"    | {s}")
+                        else:
+                            print("  (outline_gate_review 无显著输出)")
+                        if proc.stderr:
+                            print(f"  [stderr]: {proc.stderr[:500]}")
+                except Exception as e:
+                    print(f"  ⚠ outline_gate_review 调用失败: {e}")
+            else:
+                print()
+                print("[PACING OK] 所有卷节奏偏差均在 50% 以内，无需联动拦截")
+
+        elif args.with_outline_gate:
+            print("\n[PACING SKIP] 章节队列为空或 volume_map 不可用，无法检测节奏漂移")
 
     return 1 if result["status"] == "FAIL" else 0
 

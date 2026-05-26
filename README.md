@@ -54,11 +54,11 @@
 
 | 子系统 | 目录 | 角色 | Guide |
 |--------|------|------|-------|
-| **scanner** | `subsystems/scanner/` | 市场雷达——扫榜、找趋势 | `subsystems/scanner/guide.md` |
-| **analyzer** | `subsystems/analyzer/` | 拆文引擎——对标分析、提取模块 | `subsystems/analyzer/guide.md` |
-| **writer** | `subsystems/writer/` | 正文执行器——方法论 + 钩子 + 禁用词 | `subsystems/writer/guide.md` |
-| **reviewer** | `subsystems/reviewer/` | 深度审查——L1/L2/L3 分级 | `subsystems/reviewer/guide.md` |
-| **polisher** | `subsystems/polisher/` | 去AI味——文字润色 | `subsystems/polisher/guide.md` |
+| **scanner** | `subsystems/scanner/` | 市场雷达——扫榜、找趋势 | `modules\chapter-review\guide.md` |
+| **analyzer** | `subsystems/analyzer/` | 拆文引擎——对标分析、提取模块 | `modules\chapter-review\guide.md` |
+| **writer** | `subsystems/writer/` | 正文执行器——方法论 + 钩子 + 禁用词 | `modules\chapter-review\guide.md` |
+| **reviewer** | `subsystems/reviewer/` | 深度审查——L1/L2/L3 分级 | `modules\chapter-review\guide.md` |
+| **polisher** | `subsystems/polisher/` | 去AI味——文字润色 | `modules\chapter-review\guide.md` |
 
 所有子系统**自包含完整方法论**，从 GitHub clone 后无需安装任何外部 skill，即装即用。
 
@@ -66,7 +66,7 @@
 
 ## 九个模块
 
-每个模块遵循五文件协议：`guide.md`（教程）/ `rules.md`（运行规则）/ `examples-good.md`（正例）/ `examples-bad.md`（反例）/ `sources.md`（来源）。
+每个模块遵循五文件协议：`modules\chapter-review\guide.md`（教程）/ `modules\chapter-review\rules.md`（运行规则）/ `modules\chapter-review\examples-good.md`（正例）/ `modules\chapter-review\examples-bad.md`（反例）/ `modules\chapter-review\sources.md`（来源）。
 
 | 模块 | 功能 | 触发时机 | 输出 |
 |------|------|----------|------|
@@ -168,7 +168,7 @@ python scripts\build_task_package.py .\我的小说 --chapter 1
 ```bash
 python scripts\sync_inkos_state.py .\我的旧书 --write
 python scripts\extract_premise.py .\我的旧书
-python scripts\director_doctor.py .\我的旧书
+scripts\director_doctor.py .\我的旧书
 ```
 
 ---
@@ -250,18 +250,18 @@ webnovel-director/
 │   └── repair-feedback/          #   修复回写
 │
 ├── subsystems/                   # 5 个自包含执行器
-│   ├── scanner/                  #   市场雷达 → guide.md + references
-│   ├── analyzer/                 #   拆文引擎 → guide.md + references
-│   ├── writer/                   #   正文执行 → guide.md + 18 references
-│   ├── reviewer/                 #   深度审查 → guide.md + rubric
-│   └── polisher/                 #   去AI味 → guide.md + 共享 craft
+│   ├── scanner/                  #   市场雷达 → modules\chapter-review\guide.md + references
+│   ├── analyzer/                 #   拆文引擎 → modules\chapter-review\guide.md + references
+│   ├── writer/                   #   正文执行 → modules\chapter-review\guide.md + 18 references
+│   ├── reviewer/                 #   深度审查 → modules\chapter-review\guide.md + rubric
+│   └── polisher/                 #   去AI味 → modules\chapter-review\guide.md + 共享 craft
 │
 ├── scripts/                      # 21 个可执行脚本（均不写正文）
-│   ├── concept_gate.py           # 概念验证
+│   ├── scripts\concept_gate.py           # 概念验证
 │   ├── init_project.py           # 项目初始化
 │   ├── director_doctor.py        # 一键体检
 │   ├── extract_premise.py        # 自动生成 premise
-│   ├── outline_gate_review.py    # 大纲六维审查
+│   ├── scripts\outline_gate_review.py    # 大纲六维审查
 │   ├── outline_causal_check.py   # 逻辑验证
 │   ├── outline_iterate.py        # 迭代修复引擎
 │   ├── generate_outline_queue.py # 细纲自动生成
@@ -270,20 +270,20 @@ webnovel-director/
 │   ├── review_chapter.py         # L1 审查
 │   ├── review_parallel.py        # 4 Agent 并行
 │   ├── post_writeback.py         # 写后回写
-│   ├── repair_plan.py            # R0-R4 修复
-│   ├── director_meta_iterate.py  # 项目自检
+│   ├── scripts\repair_plan.py            # R0-R4 修复
+│   ├── scripts\director_meta_iterate.py  # 项目自检
 │   ├── validate_relationships.py # 关系图验证
-│   ├── validate_pacing.py        # 节奏验证
+│   ├── scripts\validate_pacing.py        # 节奏验证
 │   ├── check_cron_prompt.py      # cron 审计
-│   ├── sync_inkos_state.py       # inkos 同步
-│   ├── test_smoke.py             # 冒烟测试
-│   └── dashboard_server.py       # Web 仪表盘
+│   ├── scripts\sync_inkos_state.py       # inkos 同步
+│   ├── scripts\test_smoke.py             # 冒烟测试
+│   └── scripts\dashboard_server.py       # Web 仪表盘
 │
 ├── references/                   # 架构/接口/集成文档
 │   ├── architecture.md           # 总架构
 │   ├── module-protocol.md        # 模块协议
 │   ├── integration-subsystems.md # 子系统集成
-│   ├── cron-interface.md         # cron 接口
+│   ├── references\cron-interface.md         # cron 接口
 │   ├── state-files.md            # 状态文件规范
 │   ├── operations.md             # 操作手册
 │   ├── roadmap.md                # 路线图
@@ -314,7 +314,7 @@ webnovel-director/
 │
 └── templates/                    # director/truth 模板
     ├── premise.md                # 书名承诺 + 禁飞区
-    ├── director_state.json5      # 项目状态
+    ├── templates\director_state.json5      # 项目状态
     ├── chapter_queue.md          # 待写队列
     ├── last_audit.md             # 最近审计
     ├── audit_log.md              # 审计日志
@@ -339,7 +339,7 @@ export OPENAI_BASE_URL="..."        # API 端点（可选，默认 OpenAI）
 
 ### cron 自动日更
 
-参考 `references/cron-interface.md`。核心规则：
+参考 `references\cron-interface.md`。核心规则：
 - 每章写完 → reviewer → polisher → post_writeback → 下一章
 - 发现 WARN/FAIL → 停止 + 通知
 - 10 章批处理（如 1:00-6:00，每 30 分钟一章）
@@ -362,19 +362,19 @@ python scripts\dashboard_server.py    # 启动 Web 仪表盘（默认 http://loc
 
 | 优先级 | 能力 | 状态 |
 |:---:|------|:---:|
-| **P1** | `director_meta_iterate.py` 增强：自动修复双路径等常见错误 | 📋 |
-| **P1** | CI/CD：push 自动跑 `test_smoke.py` + `director_meta_iterate.py` | 📋 |
-| **P2** | `project_manager.py`：多书索引 + 批量 doctor + 切换活跃项目 | 📋 |
-| **P2** | `migrate_project.py`：inkos → webnovel-director 一键迁移 | 📋 |
-| **P2** | `director_state.json5` 升级：加 vcs/remote/branch 字段 | 📋 |
+| **P1** | `scripts\director_meta_iterate.py` 增强：自动修复双路径等常见错误 | 📋 |
+| **P1** | CI/CD：push 自动跑 `scripts\test_smoke.py` + `scripts\director_meta_iterate.py` | 📋 |
+| **P2** | `scripts\project_manager.py`：多书索引 + 批量 doctor + 切换活跃项目 | 📋 |
+| **P2** | `scripts\migrate_project.py`：inkos → webnovel-director 一键迁移 | 📋 |
+| **P2** | `templates\director_state.json5` 升级：加 vcs/remote/branch 字段 | 📋 |
 | **P3** | L3 审查自动化：每 30 章/卷末自动触发 4 Agent 并行 | 📋 |
 | **P3** | 审查评分卡：A~F + 趋势箭头替代纯 P/W/F | 📋 |
-| **P3** | `validate_pacing.py` → `outline_gate_review.py` 联动拦截 | 📋 |
-| **P4** | `dashboard_server.py` CLI 模式（`--mode cli` 终端彩色面板） | 📋 |
+| **P3** | `scripts\validate_pacing.py` → `scripts\outline_gate_review.py` 联动拦截 | 📋 |
+| **P4** | `scripts\dashboard_server.py` CLI 模式（`--mode cli` 终端彩色面板） | 📋 |
 | **P4** | 章节趋势图表：字数 × 审查分 × 偏离度 三线同屏 | 📋 |
-| **P4** | 一键修复按钮：批量触发 `repair_plan.py` | 📋 |
-| **P5** | story-* skill 输出直通 `concept_gate.py` | 📋 |
-| **P5** | `cron-interface.md` 升级：自动检测 gateway cron + 失联告警 | 📋 |
+| **P4** | 一键修复按钮：批量触发 `scripts\repair_plan.py` | 📋 |
+| **P5** | story-* skill 输出直通 `scripts\concept_gate.py` | 📋 |
+| **P5** | `references\cron-interface.md` 升级：自动检测 gateway cron + 失联告警 | 📋 |
 | **P5** | 封面生成联动：`build_task_package.py --with-cover` | 📋 |
 
 ---
@@ -388,16 +388,16 @@ A: 不需要。五个子系统全部自包含，clone 即用。
 A: 默认番茄小说。起点/晋江可通过 scanner 配置数据源。
 
 **Q: 能自动日更吗？**
-A: 能。配置 cron + `references/cron-interface.md`，写前/写后全部自动。
+A: 能。配置 cron + `references\cron-interface.md`，写前/写后全部自动。
 
 **Q: 会自己发章节吗？**
 A: 不会。webnovel-director 不自动发布到任何平台。
 
 **Q: 和 inkos 的关系？**
-A: webnovel-director 是调度台，inkos 是执行器之一。通过 `sync_inkos_state.py` 双向同步。
+A: webnovel-director 是调度台，inkos 是执行器之一。通过 `scripts\sync_inkos_state.py` 双向同步。
 
 **Q: 能并发写多本书吗？**
-A: 可以。每本书独立目录，独立状态。V3.0 将提供 `project_manager.py` 统一管理。
+A: 可以。每本书独立目录，独立状态。V3.0 将提供 `scripts\project_manager.py` 统一管理。
 
 ---
 
@@ -406,7 +406,7 @@ A: 可以。每本书独立目录，独立状态。V3.0 将提供 `project_manag
 1. 所有模块遵循五文件协议（guide / rules / examples-good / examples-bad / sources）
 2. 脚本需通过 `python -m compileall scripts\`
 3. 新增功能先写正例 + 反例，再写规则
-4. PR 前跑 `python scripts\director_doctor.py` + `python scripts\test_smoke.py`
+4. PR 前跑 `scripts\director_doctor.py` + `scripts\test_smoke.py`
 
 ---
 

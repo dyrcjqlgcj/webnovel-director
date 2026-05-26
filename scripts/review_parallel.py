@@ -341,5 +341,187 @@ def main() -> int:
     return 1 if result["status"] == "FAIL" else 0
 
 
+# ── JSON5 parser (no external dependency) ──
+
+def _strip_json5(text: str) -> str:
+    """Strip JSON5 comments and trailing commas to produce valid JSON."""
+    lines = []
+    for line in text.splitlines():
+        # Remove // line comments (but not inside strings)
+        stripped = line
+        in_string = False
+        string_char = None
+        i = 0
+        while i < len(line):
+            ch = line[i]
+            if not in_string:
+                if ch in ('"', "'"):
+                    in_string = True
+                    string_char = ch
+                elif ch == '/' and i + 1 < len(line) and line[i + 1] == '/':
+                    stripped = line[:i]
+                    break
+                elif ch == '/' and i + 1 < len(line) and line[i + 1] == '*':
+                    # Block comment on same line
+                    end = line.find('*/', i + 2)
+                    if end >= 0:
+                        line = line[:i] + line[end + 2:]
+                        i -= 1
+                    else:
+                        stripped = line[:i]
+                        break
+            else:
+                if ch == '\\' and i + 1 < len(line):
+                    i += 1  # skip escaped char
+                elif ch == string_char:
+                    in_string = False
+                    string_char = None
+            i += 1
+        stripped = stripped.rstrip()
+        # Remove trailing commas before ] or }
+        stripped = re.sub(r',\s*([\]\}])', r'\1', stripped)
+        lines.append(stripped)
+    return '\n'.join(lines)
+
+
+def load_json5(path: Path) -> dict:
+    """Load a JSON5 file, returning a dict (empty dict on failure)."""
+    raw = read(path)
+    if not raw:
+        return {}
+    # Remove block comments spanning multiple lines
+    raw = re.sub(r'/\*.*?\*/', '', raw, flags=re.DOTALL)
+    # Strip JS-style comments and convert JSON5 to JSON
+    clean = _strip_json5(raw)
+    # Handle unquoted keys (JSON5): wrap bare identifiers before :
+    clean = re.sub(r'(?<!")[a-zA-Z_]\w*(?=\s*:)', r'"\g<0>"', clean)
+    # Handle single-quoted strings
+    clean = re.sub(r"'([^'\\]*(?:\\.[^'\\]*)*)'", r'"\1"', clean)
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        # Fallback: aggressive strip only (no unquoted keys)
+        clean = re.sub(r'//[^\n]*', '', raw)
+        clean = re.sub(r',\s*([\]\}])', r'\1', clean)
+        clean = re.sub(r'(?<!")[a-zA-Z_]\w*(?=\s*:)', r'"\g<0>"', clean)
+        try:
+            return json.loads(clean)
+        except json.JSONDecodeError:
+            return {}
+
+
+# ── L3 自动触发 ──
+
+def _find_volume_map_path(book_dir: Path) -> Path | None:
+    for candidate in [
+        book_dir / "director" / "volume_map.md",
+        book_dir / "story" / "outline" / "volume_map.md",
+    ]:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _parse_volume_boundaries(vm_text: str) -> list[dict]:
+    """Extract volume end chapters from volume_map.md table."""
+    vols = []
+    cn_nums = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+               "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+    for line in vm_text.splitlines():
+        s = line.strip()
+        if not s.startswith("|") or "---" in s:
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        vol_name = cells[0]
+        vol_match = re.search(r"([\d一二三四五六七八九十]+)", vol_name)
+        if not vol_match:
+            continue
+        vol_str = vol_match.group(1)
+        vol_num = cn_nums.get(vol_str)
+        if vol_num is None:
+            try:
+                vol_num = int(vol_str)
+            except ValueError:
+                continue
+        rm = re.search(r"(\d+)\s*[-–—]\s*(\d+)", cells[1])
+        if rm:
+            vols.append({"volume": vol_num, "start": int(rm.group(1)), "end": int(rm.group(2))})
+    return vols
+
+
+def auto_trigger_l3_check(book_dir: str) -> dict:
+    """Determine if the current chapter warrants a full L3 review.
+
+    Triggers when:
+      - currentChapter % 30 == 0 (milestone checkpoint)
+      - currentChapter is the end of a volume (volume_map.md boundary)
+
+    Returns:
+        {"triggered": bool, "reason": str, "result": dict}
+    """
+    book = Path(book_dir).resolve()
+    state_path = book / "director" / "director_state.json5"
+    if not state_path.exists():
+        return {"triggered": False, "reason": "director_state.json5 不存在"}
+
+    state = load_json5(state_path)
+    current_ch = state.get("currentChapter", 0)
+    if not current_ch:
+        # Also try nested path
+        current_ch = state.get("currentChapter", state.get("chapter", 0))
+    if not current_ch or not isinstance(current_ch, int):
+        return {"triggered": False, "reason": "无法读取 currentChapter"}
+
+    # Check milestone (every 30 chapters)
+    is_milestone = (current_ch % 30 == 0)
+
+    # Check volume boundary
+    is_vol_end = False
+    vol_label = ""
+    vm_path = _find_volume_map_path(book)
+    if vm_path:
+        vols = _parse_volume_boundaries(read(vm_path))
+        for v in vols:
+            if v["end"] == current_ch:
+                is_vol_end = True
+                vol_label = f"第{v['volume']}卷"
+                break
+
+    if not is_milestone and not is_vol_end:
+        return {"triggered": False, "reason": f"Ch{current_ch} 无需触发 (非30章里程碑, 非卷末)"}
+
+    # Build reason string
+    reasons = []
+    if is_milestone:
+        reasons.append(f"第{current_ch}章里程碑 (30章节点)")
+    if is_vol_end:
+        reasons.append(f"{vol_label}卷末章")
+    reason = "L3 自动触发: " + ", ".join(reasons)
+
+    print(f"[L3 AUTO] {reason}")
+
+    # Run review_parallel logic
+    ch_str = f"{current_ch:04d}"
+    tp = book / "director" / "task_packages" / f"{ch_str}.yaml"
+    if not tp.exists():
+        return {"triggered": True, "reason": reason, "result": {"status": "SKIP", "detail": "task_package 不存在, 跳过审查"}}
+
+    task_pkg = load_task_package(tp)
+
+    # Find chapter text
+    chapter_text = ""
+    candidates = list(book.glob(f"chapters/{ch_str}_*.txt")) + list(book.glob(f"chapters/{ch_str}_*.md"))
+    if candidates:
+        chapter_text = read(candidates[0])
+
+    try:
+        result = run_parallel(chapter_text, task_pkg, book)
+        return {"triggered": True, "reason": reason, "result": result}
+    except Exception as e:
+        return {"triggered": True, "reason": reason, "result": {"status": "ERROR", "detail": str(e)}}
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

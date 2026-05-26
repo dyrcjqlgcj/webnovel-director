@@ -105,7 +105,7 @@ repair-feedback 处理 WARN/FAIL
 
 ## 五个子系统（自包含）
 
-所有子系统内置完整方法论，无需外部 skill 依赖。详细规则见各子系统的 `subsystems/{scanner,analyzer,writer,reviewer,polisher}/guide.md`。
+所有子系统内置完整方法论，无需外部 skill 依赖。详细规则见各子系统的 `modules\chapter-review\guide.md`。
 
 ### scanner — 市场雷达
 - 平台数据采集（番茄/起点/盐言/七猫等）
