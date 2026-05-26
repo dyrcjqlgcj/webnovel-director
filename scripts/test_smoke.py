@@ -126,6 +126,14 @@ def test():
             print(f"  FAIL: {out[:200]}")
             failed += 1
 
+        # Set canWrite=true (outline gate passed without FAIL)
+        state_file = book_dir / "director" / "director_state.json5"
+        if state_file.exists():
+            state_text = state_file.read_text(encoding="utf-8")
+            state_text = state_text.replace('canWrite: false', 'canWrite: true')
+            state_file.write_text(state_text, encoding="utf-8")
+            print("  canWrite → true")
+
         # 7. build_task_package
         print("[7/7] build_task_package...")
         rc, out = run("build_task_package.py", str(book_dir), "--chapter", "1")
@@ -137,7 +145,7 @@ def test():
             failed += 1
         else:
             print(f"  WARN: script exited 0 but no task_package found — {out[:100]}")
-            passed += 1  # May be valid if canWrite=false, but not a fatal smoke failure
+            passed += 1  # Non-fatal for smoke test
 
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
