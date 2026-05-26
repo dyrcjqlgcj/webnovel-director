@@ -406,11 +406,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
   <div class="status-block" id="h-status" style="background:rgba(107,114,128,0.15)">--</div>
   <div class="spacer"></div>
   <div class="header-progress">
-    <div class="progress-bg" style="height:4px;width:180px;display:flex">
-      <div class="progress-fill" id="header-progress" style="width:0%;background:var(--accent);border-radius:3px 0 0 3px"></div>
-      <div class="progress-fill" id="header-progress-queue" style="width:0%;background:#eab308;border-radius:0"></div>
+    <div>
+      <div class="progress-bg" style="height:4px;width:240px;display:flex">
+        <div class="progress-fill" id="header-progress" style="width:0%;background:var(--accent);border-radius:3px 0 0 3px"></div>
+        <div class="progress-fill" id="header-progress-queue" style="width:0%;background:#eab308;border-radius:0"></div>
+      </div>
+      <span style="font-size:11px;color:var(--muted);white-space:nowrap" id="header-progress-text">-</span>
     </div>
-    <span style="font-size:11px;color:var(--muted);margin-left:8px;white-space:nowrap" id="header-progress-text">-</span>
   </div>
   <div class="header-stats">
     <span class="header-stat-item">&#9888; <b id="h-warn">0</b></span>
@@ -436,7 +438,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
     <div class="card" style="padding:12px">
       <div class="filter-row">
         <h2 style="margin:0;flex:1">章节状态</h2>
-        <span id="h-avg-words" style="font-size:11px;color:var(--muted);margin-right:10px">-</span>
         <select id="vol-select" onchange="switchVolume()"></select>
         <select id="status-filter" onchange="applyFilter()">
           <option value="">全部</option>
@@ -452,7 +453,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
           <thead><tr>
             <th class="ch-col">#</th>
             <th class="title-col">标题</th>
-            <th class="words-col">字数</th>
+            <th class="words-col"><span id="h-avg-words" style="font-size:9px;color:var(--muted);display:block;line-height:1">-</span>字数</th>
             <th class="score-col">评分</th>
             <th class="time-col">修改</th>
             <th class="status-col">审查</th>
