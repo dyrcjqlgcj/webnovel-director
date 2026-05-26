@@ -239,6 +239,12 @@ def run_action(book_dir: Path, action: str) -> dict:
         "causal": [sys.executable, str(scripts / "outline_causal_check.py"), book],
         "iterate": [sys.executable, str(scripts / "outline_iterate.py"), book,
                     "--no-llm", "--max-rounds", "2"],
+        "scoring": [sys.executable, str(scripts / "scoring_card.py"), book, "--chapter", "1-99"],
+        "trend": [sys.executable, str(scripts / "trend_chart.py"), book, "--last", "30"],
+        "batch_repair": [sys.executable, str(scripts / "repair_plan.py"), book, "--batch", "--auto-apply"],
+        "pacing": [sys.executable, str(scripts / "validate_pacing.py"), book, "--with-outline-gate"],
+        "l3_review": [sys.executable, str(scripts / "review_parallel.py"), book],
+        "cron_audit": [sys.executable, str(scripts / "cron_auditor.py"), "--check", book],
     }
 
     if action.startswith("review_ch_"):
@@ -439,6 +445,14 @@ td.goal:hover { white-space: normal; overflow: visible; background: var(--bg); p
         <button class="btn" onclick="doAction('review')">📋 大纲审查</button>
         <button class="btn" onclick="doAction('causal')">🔗 逻辑验证</button>
         <button class="btn" onclick="doAction('iterate')">🔄 迭代修复</button>
+        <br><br>
+        <button class="btn" onclick="doAction('scoring')" style="background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7">📊 评分卡</button>
+        <button class="btn" onclick="doAction('trend')" style="background:#e3f2fd;color:#1565c0;border:1px solid #90caf9">📈 趋势图</button>
+        <button class="btn" onclick="doAction('pacing')" style="background:#fff3e0;color:#e65100;border:1px solid #ffcc80">⏱ 节奏检测</button>
+        <button class="btn" onclick="doAction('batch_repair')" style="background:#fce4ec;color:#c62828;border:1px solid #f48fb1">🔧 批量修复</button>
+        <br><br>
+        <button class="btn" onclick="doAction('l3_review')" style="background:#f3e5f5;color:#6a1b9a;border:1px solid #ce93d8">🔬 L3深度审查</button>
+        <button class="btn" onclick="doAction('cron_audit')" style="background:#e0f7fa;color:#006064;border:1px solid #80deea">🕐 Cron审计</button>
         <button class="btn" onclick="exportTable()">📋 导出</button>
         <button class="btn" onclick="refresh()">🔃 刷新</button>
       </div>
