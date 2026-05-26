@@ -653,15 +653,12 @@ function render(data) {
   document.getElementById('h-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
   document.getElementById('h-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
   var pending = allCh.filter(function(c) { return !c.words || c.words === 0; }).length;
-  document.getElementById('h-canwrite').textContent = '待写 ' + pending + ' 章';
+  document.getElementById('h-canwrite').textContent = pending;
 
   // Summary row
   var totalWords = allCh.reduce(function(sum, c) { return sum + (c.words || 0); }, 0);
-  var reviewedLen = allCh.filter(function(c) { return c.review_verdict; }).length;
-  var passRate = reviewedLen > 0 ? Math.round(allCh.filter(function(c) { return c.review_verdict === 'PASS'; }).length / reviewedLen * 100) : 0;
-  var volLabels = (s.volumes || []).map(function(v) { return '第' + v.label + '卷'; });
   var avgWords = written > 0 ? Math.round(totalWords / written) : 0;
-  document.getElementById('h-summary').textContent = '日均 ' + avgWords + '字 | 审查 ' + reviewedLen + '/' + written + ' (' + passRate + '%) | ' + (volLabels.length > 0 ? volLabels.slice(0, 3).join('·') + (volLabels.length > 3 ? '…' : '') : '');
+  document.getElementById('h-summary').textContent = '均章 ' + avgWords + '字';
 
   // Sidebar: recent audits
   var audDiv = document.getElementById('sb-audit');
