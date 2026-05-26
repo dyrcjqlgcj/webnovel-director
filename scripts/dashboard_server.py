@@ -331,7 +331,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 
 /* Table */
 #table-wrap { max-height: calc(100vh - 150px); overflow-y: auto; border-radius: 6px; }
-#chapter-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 14px; }
+#chapter-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 #chapter-table th { text-align: center; padding: 8px 12px; color: var(--muted);
   font-weight: 500; border-bottom: 2px solid var(--border); font-size: 11px;
   letter-spacing: 0.5px; position: sticky; top: 0; background: var(--card); z-index: 1; }
@@ -578,7 +578,7 @@ function renderTable(chapters, volumes) {
       <td class="time-col">${mtime}</td>
       <td class="status-col" style="color:${verdictColors[rvVerdict]||'var(--muted)'}">${rvVerdict ? (vLabel[rvVerdict]||rvVerdict) : (words > 0 ? '已写' : '-')}</td>
       <td class="time-col">${rvTime}</td>
-      <td class="review-col"><button onclick="event.stopPropagation();doAction('review_ch_${c.chapter}')" style="padding:3px 8px;font-size:11px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer">审</button></td>
+      <td class="review-col"><button onclick="event.stopPropagation();doAction('review_ch_${c.chapter}')" style="padding:2px 6px;font-size:11px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;width:32px">审</button></td>
     </tr>`;
   }).join('');
 }
