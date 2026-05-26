@@ -619,7 +619,7 @@ function render(data) {
   }
   var pct = planned > 0 ? Math.round(written / planned * 100) : 0;
   document.getElementById('header-progress').style.width = pct + '%';
-  document.getElementById('header-progress-text').textContent = written + '/' + planned + ' (' + pct + '%) ' + ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
+  document.getElementById('header-progress-text').textContent = '已写' + written + '章/共' + planned + '章 (' + pct + '%) ' + ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
 
   // Sidebar: review stats
   var allCh = s.chapters || [];
@@ -631,7 +631,8 @@ function render(data) {
   // Header stats
   document.getElementById('h-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
   document.getElementById('h-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
-  document.getElementById('h-canwrite').textContent = s.can_write ? '可写' : '锁定';
+  var nextCh = s.current_chapter || allCh.filter(function(c){return c.words>0}).length;
+  document.getElementById('h-canwrite').textContent = s.can_write ? ('下一章 ' + (nextCh + 1)) : '锁定';
 
   // Sidebar: recent audits
   var audDiv = document.getElementById('sb-audit');
