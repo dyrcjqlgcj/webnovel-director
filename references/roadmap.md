@@ -52,7 +52,7 @@
 
 **核心链路完整、可用。** 初始化 → 体检 → 审查 → 任务包 → 写后回写 五个环节都有脚本支撑。
 
-P1 缺口已全部填补。P2 缺口仅剩 cron 审计、inkos 适配、story-* 集成三项。
+P1 缺口已全部填补。P2 缺口仅剩 inkos 执行器适配一项（cron审计/story-*集成已由cron_auditor.py/concept_gate_import.py实现）。
 
 
 
