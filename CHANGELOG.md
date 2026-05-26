@@ -8,7 +8,7 @@
 
 ### P1: 自愈引擎增强 + CI/CD
 - `scripts\director_meta_iterate.py` 增强：自动修复双路径等常见错误
-- GitHub CI：push 自动跑 `test_smoke.py` + `director_meta_iterate.py`
+- GitHub CI：push 自动跑 `scripts\test_smoke.py` + `scripts\director_meta_iterate.py`
 
 ### P2: 项目管理
 - 新增 `scripts\project_manager.py`：多书索引 + 批量 doctor + 切换活跃项目
