@@ -331,7 +331,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 
 /* Table */
 #table-wrap { max-height: calc(100vh - 150px); overflow-y: auto; border-radius: 6px; }
-#chapter-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+#chapter-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 14px; }
 #chapter-table th { text-align: left; padding: 8px 12px; color: var(--muted);
   font-weight: 500; border-bottom: 2px solid var(--border); font-size: 11px;
   letter-spacing: 0.5px; position: sticky; top: 0; background: var(--card); z-index: 1; }
@@ -344,7 +344,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 #chapter-table .ch-col { font-weight: 600; width: 36px; }
 #chapter-table .title-col { width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #chapter-table .words-col { text-align: right; font-variant-numeric: tabular-nums;
-  font-size: 12px; color: var(--muted); width: 60px; }
+  font-size: 12px; color: var(--muted); width: 80px; }
 #chapter-table .score-col { text-align: center; font-weight: 700; width: 44px; }
 #chapter-table .time-col { width: 70px; font-size: 11px; color: var(--muted); white-space: nowrap; }
 #chapter-table .status-col { width: 55px; }
@@ -411,7 +411,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
         <div class="progress-fill" id="header-progress" style="width:0%;background:var(--accent);border-radius:3px 0 0 3px"></div>
         <div class="progress-fill" id="header-progress-queue" style="width:0%;background:#eab308;border-radius:0"></div>
       </div>
-      <span style="font-size:11px;color:var(--muted);white-space:nowrap" id="header-progress-text">-</span>
+      <span style="font-size:12px;color:var(--muted);white-space:nowrap" id="header-progress-text">-</span>
     </div>
   </div>
   <div class="header-stats">
@@ -453,7 +453,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
           <thead><tr>
             <th class="ch-col">#</th>
             <th class="title-col">标题</th>
-            <th class="words-col"><span id="h-avg-words" style="font-size:9px;color:var(--muted);display:block;line-height:1">-</span>字数</th>
+            <th class="words-col" id="th-words">字数</th>
             <th class="score-col">评分</th>
             <th class="time-col">修改</th>
             <th class="status-col">审查</th>
@@ -662,7 +662,7 @@ function render(data) {
   // Average words in table header
   var totalWords = allCh.reduce(function(sum, c) { return sum + (c.words || 0); }, 0);
   var avgWords = written > 0 ? Math.round(totalWords / written) : 0;
-  document.getElementById('h-avg-words').textContent = '均' + avgWords + '字';
+  document.getElementById('th-words').textContent = '字数（均' + avgWords + '字）';
 
   // Sidebar: recent audits
   var audDiv = document.getElementById('sb-audit');
