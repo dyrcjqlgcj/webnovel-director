@@ -647,11 +647,12 @@ function render(data) {
 
   // Sidebar: blockers
   var bl = document.getElementById('sb-blockers');
-  if (!bl) return;
+  if (bl) {
   if ((s.blockers || []).length > 0) {
     bl.innerHTML = s.blockers.map(function(b) { return '<div class="blocker-item">' + esc(b) + '</div>'; }).join('');
   } else {
     bl.innerHTML = '<span style="color:var(--pass);font-size:12px">无阻塞项</span>';
+  }
   }
 
   // Refresh indicator
