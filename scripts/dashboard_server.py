@@ -341,7 +341,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 .vol-band-even { background: rgba(255,255,255,0.02); }
 .vol-band-odd { background: rgba(99,102,241,0.04); }
 #chapter-table tbody tr:hover { background: rgba(255,255,255,0.03); }
-#chapter-table .ch-col { font-weight: 600; width: 36px; }
+#chapter-table .ch-col { font-weight: 600; width: 36px; text-align: left; }
 #chapter-table .title-col { width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #chapter-table .words-col { text-align: center; font-variant-numeric: tabular-nums;
   font-size: 12px; color: var(--muted); width: 80px; }
