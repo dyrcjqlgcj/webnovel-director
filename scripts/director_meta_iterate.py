@@ -126,6 +126,7 @@ def check_cross_references(root: Path) -> list[dict]:
             if any(ref_path.startswith(p) for p in skip_prefixes):
                 continue
 
+            ref_path = ref_path.replace('\\', '/')
             candidate = (md_file.parent / ref_path).resolve()
             candidate2 = (root / ref_path).resolve()
 

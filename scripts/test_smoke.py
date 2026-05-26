@@ -126,13 +126,15 @@ def test():
             print(f"  FAIL: {out[:200]}")
             failed += 1
 
-        # Set canWrite=true (outline gate passed without FAIL)
+        # Set canWrite=true + clear blockers (outline gate passed without FAIL)
         state_file = book_dir / "director" / "director_state.json5"
         if state_file.exists():
             state_text = state_file.read_text(encoding="utf-8")
+            import re
             state_text = state_text.replace('canWrite: false', 'canWrite: true')
+            state_text = re.sub(r'blockers\s*:\s*\[[^\]]*\]', 'blockers: []', state_text)
             state_file.write_text(state_text, encoding="utf-8")
-            print("  canWrite → true")
+            print("  canWrite→true, blockers cleared")
 
         # 7. build_task_package
         print("[7/7] build_task_package...")
