@@ -228,7 +228,9 @@ def extract_cover_prompt(premise_path: Path) -> str:
 
 def status_ok(status: str) -> bool:
     s = status.strip().lower()
-    return any(x in s for x in READY_STATUSES) and not any(x in s for x in BLOCKED_STATUSES)
+    # Use word-boundary matching to avoid substring false positives (e.g. "pass" in "compass")
+    words = re.split(r"[^\w]+", s)
+    return any(x in words for x in READY_STATUSES) and not any(x in words for x in BLOCKED_STATUSES)
 
 
 def fail(reason: str, evidence: str, suggestions: list[str], json_mode: bool = False) -> int:

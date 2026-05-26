@@ -27,6 +27,11 @@ def read(p: Path) -> str:
 
 def write(p: Path, content: str):
     p.parent.mkdir(parents=True, exist_ok=True)
+    # Backup before overwrite
+    if p.exists():
+        import shutil, time
+        bak = p.with_suffix(p.suffix + ".bak." + time.strftime("%Y%m%d-%H%M%S"))
+        shutil.copy2(p, bak)
     p.write_text(content, encoding="utf-8")
 
 
@@ -61,13 +66,12 @@ def _call_deepseek_api(prompt: str, model: str = "deepseek-chat", timeout: int =
         "temperature": 0.7,
     }).encode("utf-8")
 
-    req = urllib.request.Request(
-        "https://api.deepseek.com/v1/chat/completions",
-        data=data,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-    )
-
     for attempt in range(MAX_LLM_RETRIES):
+        req = urllib.request.Request(
+            "https://api.deepseek.com/v1/chat/completions",
+            data=data,
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+        )
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 result = json.loads(resp.read())

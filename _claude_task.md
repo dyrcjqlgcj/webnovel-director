@@ -1,11 +1,9 @@
-# 审查 outline_iterate.py
+# 审查 review_chapter.py / repair_plan.py / post_writeback.py
 
-在 C:\Users\ThinkPad\.openclaw\skills\webnovel-director 中审查 scripts/outline_iterate.py 的代码逻辑：
+审查 C:\Users\ThinkPad\.openclaw\skills\webnovel-director\scripts 中的这三个文件：
 
-1. 迭代推理的终止条件是否合理
-2. LLM 调用是否有重试和超时保护
-3. 修复应用机制是否可回滚
-4. 有没有明显的性能或逻辑问题
-5. 能否优化
+review_chapter.py: 审查维度是否完整、禁飞区/命题检查是否有用、输出格式
+repair_plan.py: R0-R4分级是否合理、自动修复安全性、--batch/--auto-apply
+post_writeback.py: 回写原子性、备份、文件更新逻辑
 
-用中文输出结论和建议。
+每个文件用1-2句中文总结最重要的发现。

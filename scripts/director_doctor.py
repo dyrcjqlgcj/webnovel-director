@@ -95,6 +95,9 @@ def check_self(json_output: bool = False) -> int:
         except SyntaxError as e:
             issues.append({"severity": "FAIL", "area": "scripts",
                           "issue": f"{script_name} 语法错误: {e}"})
+        except (PermissionError, OSError, UnicodeDecodeError) as e:
+            issues.append({"severity": "WARN", "area": "scripts",
+                          "issue": f"{script_name} 无法读取: {e}"})
 
     # Check that key reports/scripts exist per roadmap
     key_checks = [

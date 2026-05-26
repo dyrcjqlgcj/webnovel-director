@@ -228,14 +228,13 @@ def main() -> int:
             write(book/"director/chapter_queue.md", q_text)
         # Use upsert (replace-or-insert) for truth files
         write(book/"truth/current_state.md", upsert_section(read(book/"truth/current_state.md"), args.chapter, state_content))
-        if expire_res_rows:
-            write(book/"truth/resource_ledger.md", upsert_table_rows(read(book/"truth/resource_ledger.md"), args.chapter, expire_res_rows))
-        if expire_part_rows:
-            write(book/"truth/particle_ledger.md", upsert_table_rows(read(book/"truth/particle_ledger.md"), args.chapter, expire_part_rows))
-        if res_rows:
-            write(book/"truth/resource_ledger.md", upsert_table_rows(read(book/"truth/resource_ledger.md"), args.chapter, res_rows))
-        if particle_rows:
-            write(book/"truth/particle_ledger.md", upsert_table_rows(read(book/"truth/particle_ledger.md"), args.chapter, particle_rows))
+        # Merge expire + new rows before writing (avoid overwrite bug)
+        all_res_rows = expire_res_rows + res_rows
+        if all_res_rows:
+            write(book/"truth/resource_ledger.md", upsert_table_rows(read(book/"truth/resource_ledger.md"), args.chapter, all_res_rows))
+        all_part_rows = expire_part_rows + particle_rows
+        if all_part_rows:
+            write(book/"truth/particle_ledger.md", upsert_table_rows(read(book/"truth/particle_ledger.md"), args.chapter, all_part_rows))
         if hook_rows:
             write(book/"truth/pending_hooks.md", upsert_table_rows(read(book/"truth/pending_hooks.md"), args.chapter, hook_rows))
     result = {"status":"PASS", "audit":args.audit, "chapter":args.chapter, "write":args.write, "queueChanged":q_changed, "nextStep":next_step, "blockers":blockers}
