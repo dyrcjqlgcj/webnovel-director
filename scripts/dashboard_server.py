@@ -621,17 +621,17 @@ function render(data) {
   document.getElementById('header-progress').style.width = pct + '%';
   document.getElementById('header-progress-text').textContent = written + '/' + planned + ' (' + pct + '%) ' + ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
 
-  // Header stats
-  document.getElementById('h-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
-  document.getElementById('h-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
-  document.getElementById('h-canwrite').textContent = s.can_write ? '可写' : '锁定';
-
   // Sidebar: review stats
   var allCh = s.chapters || [];
   document.getElementById('sb-pass').textContent = allCh.filter(function(c) { return c.review_verdict === 'PASS'; }).length;
   document.getElementById('sb-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
   document.getElementById('sb-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
   document.getElementById('sb-pending').textContent = allCh.filter(function(c) { return c.words > 0 && !c.review_verdict; }).length;
+
+  // Header stats
+  document.getElementById('h-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
+  document.getElementById('h-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
+  document.getElementById('h-canwrite').textContent = s.can_write ? '可写' : '锁定';
 
   // Sidebar: recent audits
   var audDiv = document.getElementById('sb-audit');
