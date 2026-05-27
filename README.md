@@ -12,6 +12,17 @@ pip install pyyaml
 
 Python ≥ 3.11，LLM 需要 OpenAI 兼容 API（DeepSeek / OpenAI / GPTsAPI）。
 
+也可以作为 OpenClaw skill 安装，安装后直接对话即可使用：
+
+```bash
+# 方式一：ClawHub
+clawhub install webnovel-director
+
+# 方式二：本地软链接
+cd ~/.openclaw/skills
+ln -s /path/to/webnovel-director webnovel-director
+```
+
 ## 使用
 
 ```bash
