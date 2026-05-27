@@ -23,22 +23,22 @@ python wd.py gate concept --inline "
 平台: 番茄
 "
 
-# 建项目
-python wd.py init ./轮回塔 --title "轮回塔"
-# → 编辑 ./轮回塔/director/premise.md
-# → 编辑 ./轮回塔/story/outline/volume_map.md
-# → 编辑 ./轮回塔/director/chapter_queue.md
+# 建项目（在 webnovel-director 目录外面）
+python wd.py init ../轮回塔 --title "轮回塔"
+# → 编辑 ../轮回塔/director/premise.md
+# → 编辑 ../轮回塔/story/outline/volume_map.md
+# → 编辑 ../轮回塔/director/chapter_queue.md
 
 # 大纲审查 + 自动修复
-python wd.py gate outline ./轮回塔 --fix
+python wd.py gate outline ../轮回塔 --fix
 
 # 写正文
-python wd.py build ./轮回塔 --chapter 1
-python wd.py write ./轮回塔 --chapter 1
+python wd.py build ../轮回塔 --chapter 1
+python wd.py write ../轮回塔 --chapter 1
 
 # 审查
-python wd.py review ./轮回塔 --chapter 1
-python wd.py doctor ./轮回塔
+python wd.py doctor ../轮回塔
+python wd.py review ../轮回塔 --chapter 1
 ```
 
 仪表盘：
