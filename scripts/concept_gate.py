@@ -16,7 +16,18 @@ Input: A YAML file or inline string with these fields:
 """
 
 from __future__ import annotations
-import argparse, json, re, sys, yaml
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+import yaml
+
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import read_text  # noqa: E402
 
 WEIGHTS = {
     "protagonist_uniqueness": 25,
@@ -297,8 +308,7 @@ def main():
     if args.inline:
         concept = yaml.safe_load(args.inline)
     elif args.concept_file:
-        import pathlib
-        concept = yaml.safe_load(pathlib.Path(args.concept_file).read_text(encoding="utf-8"))
+        concept = yaml.safe_load(read_text(args.concept_file))
     else:
         ap.print_help()
         return 1

@@ -9,16 +9,11 @@ files only; never edits chapters or story/*.md source files.
 """
 from __future__ import annotations
 from pathlib import Path
+import sys
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import read_text, write_text
 import argparse, datetime, json, re, shutil
-
-
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig", errors="ignore") if path.exists() else ""
-
-
-def write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
 
 
 def latest_chapter(chapters: Path) -> tuple[int, str]:
@@ -52,7 +47,7 @@ def load_book_json(book: Path) -> dict:
     if not p.exists():
         return {}
     try:
-        return json.loads(read(p))
+        return json.loads(read_text(p))
     except Exception:
         return {}
 
@@ -80,8 +75,8 @@ def simple_state_json5(book_id: str, title: str, current: int, can_write: bool, 
 
 
 def make_resource_ledger(book: Path, current: int) -> str:
-    vol2 = read(book / "story" / "volume_2_summary.md")
-    cur = read(book / "story" / "current_state.md")
+    vol2 = read_text(book / "story" / "volume_2_summary.md")
+    cur = read_text(book / "story" / "current_state.md")
     rows = []
     def add(res, change, state, evidence):
         rows.append(f"| {current} | {res} | {change} | {state} | {evidence} |")
@@ -97,7 +92,7 @@ def make_resource_ledger(book: Path, current: int) -> str:
 
 
 def make_particle_ledger(book: Path, current: int) -> str:
-    texts = "\n".join(read(book / "story" / name) for name in ["volume_2_summary.md", "pending_hooks.md", "book_rules.md"])
+    texts = "\n".join(read_text(book / "story" / name) for name in ["volume_2_summary.md", "pending_hooks.md", "book_rules.md"])
     candidates = [
         ("世界符号系统", "rule", "解析/理解相关线索"),
         ("世界规则来源", "clue", "规则起源/建造者线索"),
@@ -124,7 +119,7 @@ def main() -> int:
     book = Path(args.book_dir).resolve()
     meta = load_book_json(book)
     current, latest_title = latest_chapter(book / "chapters")
-    focus_n = parse_current_focus(read(book / "story" / "current_focus.md"))
+    focus_n = parse_current_focus(read_text(book / "story" / "current_focus.md"))
     title = meta.get("title") or book.name
     book_id = meta.get("id") or book.name
     issues=[]
@@ -154,22 +149,22 @@ def main() -> int:
     }
     if args.write:
         # Only director/truth files are touched.
-        write(book / "director" / "director_state.json5", simple_state_json5(book_id, title, current, can_write, blockers))
+        write_text(book / "director" / "director_state.json5", simple_state_json5(book_id, title, current, can_write, blockers))
         if (book / "story" / "current_state.md").exists():
             shutil.copyfile(book / "story" / "current_state.md", book / "truth" / "current_state.md")
         if (book / "story" / "pending_hooks.md").exists():
             shutil.copyfile(book / "story" / "pending_hooks.md", book / "truth" / "pending_hooks.md")
-        write(book / "truth" / "resource_ledger.md", make_resource_ledger(book, current))
-        write(book / "truth" / "particle_ledger.md", make_particle_ledger(book, current))
+        write_text(book / "truth" / "resource_ledger.md", make_resource_ledger(book, current))
+        write_text(book / "truth" / "particle_ledger.md", make_particle_ledger(book, current))
         now = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
         audit = f"| {now} | sync-inkos-state | story/chapter state | {'WARN' if issues else 'PASS'} | latest=Ch{current:04d} {latest_title}; focus={focus_n} | outline-gate |\n"
         audit_path = book / "director" / "audit_log.md"
         if audit_path.exists():
-            old = read(audit_path)
+            old = read_text(audit_path)
             if audit not in old:
-                write(audit_path, old.rstrip() + "\n" + audit)
+                write_text(audit_path, old.rstrip() + "\n" + audit)
         else:
-            write(audit_path, "# Audit Log\n\n| Time | Module | Object | Result | Summary | Next |\n|---|---|---|---|---|---|\n" + audit)
+            write_text(audit_path, "# Audit Log\n\n| Time | Module | Object | Result | Summary | Next |\n|---|---|---|---|---|---|\n" + audit)
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:

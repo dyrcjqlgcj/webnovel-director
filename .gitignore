@@ -6,3 +6,7 @@ __pycache__/
 *.orig
 *.tmp
 .DS_Store
+config.local.yaml
+*.egg-info/
+dist/
+build/

@@ -13,7 +13,7 @@ description: |
 ## 核心原则
 
 1. **主路由不承载全部知识**：只判断任务、分发模块、维护全局约束。
-2. **长篇必须有唯一真相源**：`templates\premise.md` + `director/director_state.json5|yaml`。
+2. **长篇必须有唯一真相源**：`director/premise.md` + `director/director_state.json5|yaml`。
 3. **卷纲/细纲强拦截**：偏离命题或触犯禁飞区，不进入正文。
 4. **正文分级审查**：Level 1 每章，Level 2 每10章，Level 3 每30章/卷末/连续 WARN/FAIL。
 5. **执行器自包含**：writer 子系统内置完整写作方法论，即装即用。
@@ -67,7 +67,7 @@ description: |
 
 ### B. 写前闸门
 
-每次写章前必须读取：`templates\premise.md`、`director/director_state.json5|yaml`、`templates\last_audit.md`、`templates\chapter_queue.md`、truth files。若卷纲/细纲触犯禁飞区或命题偏离，停止并给修复方案。
+每次写章前必须读取：`director/premise.md`、`director/director_state.json5|yaml`、`director/last_audit.md`、`director/chapter_queue.md`、truth files。若卷纲/细纲触犯禁飞区或命题偏离，停止并给修复方案。
 
 ### C. 正文执行
 

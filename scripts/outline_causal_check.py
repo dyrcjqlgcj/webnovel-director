@@ -12,77 +12,22 @@ Usage:
 """
 
 from __future__ import annotations
-import argparse, datetime, json, re, sys
+
+import argparse
+import json
+import re
+import sys
 from pathlib import Path
 
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import (  # noqa: E402
+    find_volume_map, now_iso, parse_chapter_queue, parse_volume_map,
+    read_text, write_text,
+)
 
-def read(p: Path) -> str:
-    return p.read_text(encoding="utf-8-sig", errors="ignore") if p.exists() else ""
-
-
-def split_cell(row: str) -> list[str]:
-    return [c.strip().replace("<br>", "\n") for c in row.strip().strip("|").split("|")]
-
-
-# ── Parse volume map ──
-
-def parse_volume_map(path: Path) -> list[dict]:
-    """Parse director/volume_map.md or story/outline/volume_map.md.
-    
-    Handles two formats:
-      1. Range format: "第一卷：先知之名（1-75 章）" → computes 75 chapters
-      2. Count format: "第一卷：开篇（75 章）" → uses 75 directly
-    """
-    vols = []
-    text = read(path)
-    vol_pattern = re.compile(r"第([一二三四五六七八九十\d]+)卷[：:]\s*(.+)", re.MULTILINE)
-    for m in vol_pattern.finditer(text):
-        vol_num = m.group(1)
-        vol_name = m.group(2).strip()
-        chapters = 0
-        # Try range format: "1-75 章" or "（1-75 章）"
-        range_match = re.search(r"(\d+)\s*[-–—]\s*(\d+)\s*章", vol_name)
-        if range_match:
-            start = int(range_match.group(1))
-            end = int(range_match.group(2))
-            chapters = end - start + 1
-        else:
-            # Try count format: "75 章"
-            ch_match = re.search(r"(\d+)\s*章", vol_name)
-            if ch_match:
-                chapters = int(ch_match.group(1))
-        word_match = re.search(r"(\d+)\s*万字", vol_name)
-        vols.append({
-            "volume": vol_num,
-            "name": vol_name,
-            "chapters": chapters,
-            "words": int(word_match.group(1)) if word_match else 0,
-        })
-    return vols
-
-
-def parse_chapter_queue(path: Path) -> list[dict]:
-    """Parse chapter_queue.md table."""
-    rows = []
-    for line in read(path).splitlines():
-        s = line.strip()
-        if not s.startswith("|") or "---" in s or "Chapter" in s:
-            continue
-        cells = split_cell(s)
-        if len(cells) < 6:
-            continue
-        n_raw = re.sub(r"\D", "", cells[0])
-        if not n_raw:
-            continue
-        rows.append({
-            "chapter": int(n_raw),
-            "title": cells[1],
-            "goal": cells[2],
-            "premise_hit": cells[3],
-            "forbidden": cells[4],
-            "status": cells[5],
-        })
-    return rows
+# Keep local volume map parser that handles the old "第X卷：name（N 章）"
+# format — common.parse_volume_map handles the table format.
 
 
 # ── Causal chain analysis ──
@@ -97,10 +42,18 @@ def check_causal_chain(chapters: list[dict]) -> list[dict]:
         goal = ch.get("goal", "")
         # First chapter: check it establishes something
         if i == 0 and goal:
-            if not any(kw in goal for kw in ["醒来", "发现", "进入", "收到", "穿越", "重生", "绑定", "激活"]):
+            if not any(kw in goal for kw in ["醒来", "发现", "进入", "收到", "穿越", "重生", "绑定", "激活", "降临", "开局"]):
                 issues.append({"chapter": ch["chapter"], "severity": "WARN",
                     "type": "causal_chain",
                     "issue": "首章goal未包含开局动作词（醒来/发现/进入/穿越...），可能缺乏启动事件"})
+        # Quick ch1→ch2 link check
+        if i == 1 and goal and chapters[0].get("goal", ""):
+            ch1_kw = set(re.findall(r"[一-鿿]{3,}", chapters[0].get("goal", "")))
+            ch2_kw = set(re.findall(r"[一-鿿]{3,}", goal))
+            if ch1_kw and ch2_kw and not (ch1_kw & ch2_kw):
+                issues.append({"chapter": ch["chapter"], "severity": "WARN",
+                    "type": "causal_chain",
+                    "issue": "Ch2未承接Ch1的任何概念词——黄金三章的开局衔接可能断裂"})
         # Middle chapters: check cause and effect
         if i > 0 and goal:
             prev_goal = chapters[i-1].get("goal", "")
@@ -126,13 +79,13 @@ def check_causal_chain(chapters: list[dict]) -> list[dict]:
 def check_satisfaction_density(chapters: list[dict]) -> list[dict]:
     """Ensure no >5 consecutive chapters without a satisfaction/payoff event."""
     issues = []
-    payoff_keywords = ["击败", "获得", "解锁", "突破", "打脸", "打脸", "碾压", "首通", "升级",
-                       "收获", "打脸", "逆袭", "爽", "复仇", "揭露", "震惊", "觉醒"]
+    payoff_keywords = ["击败", "获得", "解锁", "突破", "打脸", "碾压", "首通", "升级",
+                       "收获", "逆袭", "爽", "复仇", "揭露", "震惊", "觉醒"]
 
     last_payoff = 0
     for i, ch in enumerate(chapters):
         goal = ch.get("goal", "")
-        premise = ch.get("premise_hit", "")
+        premise = ch.get("premise_must_hit", "")
         combined = f"{goal} {premise}"
         if any(kw in combined for kw in payoff_keywords):
             gap = i - last_payoff
@@ -166,13 +119,13 @@ def check_character_arcs(chapters: list[dict], book_dir: Path) -> list[dict]:
         # Count appearances across chapters
         appearances = []
         for ch in chapters:
-            combined = f"{ch.get('goal','')} {ch.get('title','')} {ch.get('premise_hit','')}"
+            combined = f"{ch.get('goal','')} {ch.get('title','')} {ch.get('premise_must_hit','')}"
             if char_name in combined:
                 appearances.append(ch["chapter"])
 
         if len(appearances) < 2:
             # Only warn if this is a major character (not a one-off NPC)
-            char_text = read(cf)
+            char_text = read_text(cf)
             if "主要" in char_text or "核心" in char_text or "女主" in char_text or "男" in char_text[:5]:
                 issues.append({"chapter": 0, "severity": "WARN",
                     "type": "character_arc",
@@ -200,7 +153,7 @@ def check_power_curve(chapters: list[dict]) -> list[dict]:
     growth_points = []
     for i, ch in enumerate(chapters):
         goal = ch.get("goal", "")
-        premise = ch.get("premise_hit", "")
+        premise = ch.get("premise_must_hit", "")
         combined = f"{goal} {premise}"
         if any(re.search(kw, combined) for kw in power_keywords):
             growth_points.append(ch["chapter"])
@@ -249,33 +202,23 @@ def check_volume_structure(volumes: list[dict], chapters: list[dict]) -> list[di
     return issues
 
 
-# ── Main ──
+# ── Main logic (importable) ──
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("book_dir")
-    ap.add_argument("--json", action="store_true")
-    ap.add_argument("--write-report", action="store_true")
-    args = ap.parse_args()
-    book = Path(args.book_dir).resolve()
-
-    # Find files (support both director/ and story/outline/ paths)
-    vol_map_paths = [book / "director" / "volume_map.md", book / "story" / "outline" / "volume_map.md"]
-    ch_queue_paths = [book / "director" / "chapter_queue.md", book / "story" / "outline" / "chapter_queue.md"]
-
-    vol_map_path = next((p for p in vol_map_paths if p.exists()), None)
-    ch_queue_path = next((p for p in ch_queue_paths if p.exists()), None)
-
-    if not ch_queue_path:
-        print("FAIL: 找不到 chapter_queue.md")
-        return 1
+def run_causal_check(book_dir: str | Path) -> dict:
+    """Run the full causal logic check and return a result dict."""
+    book = Path(book_dir).resolve()
+    vol_map_path = find_volume_map(book)
+    ch_queue_path = book / "director" / "chapter_queue.md"
+    if not ch_queue_path.exists():
+        ch_queue_path = book / "story" / "outline" / "chapter_queue.md"
+    if not ch_queue_path.exists():
+        return {"status": "FAIL", "issues": [{"severity": "FAIL", "issue": "找不到 chapter_queue.md"}]}
 
     volumes = parse_volume_map(vol_map_path) if vol_map_path else []
     chapters = parse_chapter_queue(ch_queue_path)
 
     if not chapters:
-        print("FAIL: chapter_queue 为空")
-        return 1
+        return {"status": "FAIL", "issues": [{"severity": "FAIL", "issue": "chapter_queue 为空"}]}
 
     all_issues = []
     all_issues.extend(check_causal_chain(chapters))
@@ -289,18 +232,47 @@ def main() -> int:
     warn_count = sum(1 for i in all_issues if i["severity"] == "WARN")
     status = "FAIL" if fail_count > 0 else ("WARN" if warn_count > 0 else "PASS")
 
-    now = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+    return {
+        "status": status, "total_chapters": len(chapters), "volumes": len(volumes),
+        "fail": fail_count, "warn": warn_count, "issues": all_issues,
+    }
+
+
+# ── CLI ──
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("book_dir")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--write-report", action="store_true")
+    args = ap.parse_args()
+    book = Path(args.book_dir).resolve()
+
+    result = run_causal_check(book)
+
+    if "找不到" in str(result.get("issues", [{}])[0].get("issue", "")):
+        print("FAIL: " + result["issues"][0]["issue"])
+        return 1
+    if "为空" in str(result.get("issues", [{}])[0].get("issue", "")):
+        print("FAIL: " + result["issues"][0]["issue"])
+        return 1
+
+    now = now_iso()
+    all_issues = result["issues"]
+    fail_count = result["fail"]
+    warn_count = result["warn"]
+    status = result["status"]
+    volumes_count = result["volumes"]
+    chapters_count = result["total_chapters"]
 
     if args.json:
-        result = {"status": status, "total_chapters": len(chapters), "volumes": len(volumes),
-                  "fail": fail_count, "warn": warn_count, "issues": all_issues}
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print(f"=== 大纲逻辑验证报告 ===")
         print(f"时间：{now}")
         print(f"项目：{book}")
         print(f"结论：{status} (FAIL {fail_count} / WARN {warn_count})")
-        print(f"卷数：{len(volumes)}，总章数：{len(chapters)}")
+        print(f"卷数：{volumes_count}，总章数：{chapters_count}")
         print()
         if not all_issues:
             print("OK 无逻辑问题")
@@ -316,7 +288,7 @@ def main() -> int:
         report_dir.mkdir(parents=True, exist_ok=True)
         lines = [f"# 大纲逻辑验证", f"", f"时间：{now}", f"结论：{status}", f"",
                  f"## 摘要", f"| 指标 | 值 |", f"|---|---|",
-                 f"| 卷数 | {len(volumes)} |", f"| 总章数 | {len(chapters)} |",
+                 f"| 卷数 | {volumes_count} |", f"| 总章数 | {chapters_count} |",
                  f"| FAIL | {fail_count} |", f"| WARN | {warn_count} |", f""]
         if all_issues:
             lines.append("## 问题")
@@ -324,7 +296,7 @@ def main() -> int:
                 lines.append(f"- **{i['severity']}** [{i['type']}] {i.get('chapter','all')} — {i['issue']}")
         else:
             lines.append("OK 无逻辑问题")
-        (report_dir / "outline_logic_review.md").write_text("\n".join(lines), encoding="utf-8")
+        write_text(report_dir / "outline_logic_review.md", "\n".join(lines))
         print(f"\n报告已写入：{report_dir / 'outline_logic_review.md'}")
 
     return 1 if status == "FAIL" else 0

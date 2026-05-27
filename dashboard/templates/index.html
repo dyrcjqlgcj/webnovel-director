@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网文导演仪表盘</title>
+<link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+<header>
+  <h1 id="project-title">载入中...</h1>
+  <div class="stats">
+    <select id="vol-selector" onchange="switchVolume()" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:13px;margin-right:8px"></select>
+    <span>进度 <strong id="ch-progress">-</strong></span>
+    <span>字数 <strong id="ch-words">-</strong></span>
+    <span>状态 <strong id="ch-status">-</strong></span>
+    <button onclick="toggleTheme()" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px;margin-left:8px" title="切换明暗主题">🌓</button>
+  </div>
+</header>
+
+<main>
+  <div>
+    <div class="summary-grid card" style="grid-column:1/-1">
+      <div class="summary-item"><div class="value" id="s-chapters">-</div><div class="label">已写章节</div></div>
+      <div class="summary-item"><div class="value" id="s-words">-</div><div class="label">总字数</div></div>
+      <div class="summary-item"><div class="value" id="s-pass">-</div><div class="label pass-color">已审查</div></div>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+
+    <div class="card">
+      <h2>章节状态
+        <select id="status-filter" onchange="render(STATE)" style="margin-left:12px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:12px;">
+          <option value="">全部状态</option>
+          <option value="written">✅ 已写</option>
+          <option value="pass">🟢 通过</option>
+          <option value="warn">🟡 警告</option>
+          <option value="fail">🔴 失败</option>
+          <option value="queue">⬜ 待写</option>
+        </select>
+        <span style="font-size:11px;color:var(--muted);margin-left:8px;font-weight:400" id="auto-refresh-label"></span>
+      </h2>
+      <div style="max-height:600px;overflow-y:auto">
+      <table id="chapter-table"><thead><tr>
+        <th style="width:40px">#</th><th style="width:90px">标题</th><th style="width:55px">字数</th><th style="width:75px">修改</th><th style="width:55px">审查</th><th style="width:75px">时间</th><th style="width:140px">审查详情</th><th style="width:60px">状态</th><th style="width:44px"></th>
+      </tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>操作</h2>
+      <div class="actions">
+        <button class="btn primary" onclick="doAction('doctor')">🔍 一键体检</button>
+        <button class="btn" onclick="doAction('review')">📋 大纲审查</button>
+        <button class="btn" onclick="doAction('causal')">🔗 逻辑验证</button>
+        <button class="btn" onclick="doAction('iterate')">🔄 迭代修复</button>
+        <button class="btn" onclick="exportTable()">📋 导出</button>
+        <button class="btn" onclick="refresh()">🔃 刷新</button>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>阻塞项</h2>
+      <div class="blockers" id="blockers-list">-</div>
+    </div>
+    <div class="card" style="padding:12px">
+      <div class="output-panel" id="output"></div>
+      <div class="refresh-time" id="refresh-time"></div>
+    </div>
+  </div>
+</main>
+
+<div class="modal-overlay" id="detail-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box">
+    <button class="close-btn" onclick="closeModal()">&times;</button>
+    <h3 id="modal-title"></h3>
+    <div class="meta" id="modal-meta"></div>
+    <div class="field"><div class="field-label">章节目标 Goal</div><div class="field-value" id="modal-goal"></div><textarea id="modal-goal-edit" style="display:none;width:100%;min-height:60px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px;resize:vertical"></textarea></div>
+    <div class="field"><div class="field-label">命题兑现 Premise Must Hit</div><div class="field-value" id="modal-premise"></div><textarea id="modal-premise-edit" style="display:none;width:100%;min-height:60px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px;resize:vertical"></textarea></div>
+    <div class="field"><div class="field-label">禁飞区 Forbidden</div><div class="field-value" id="modal-forbidden"></div><textarea id="modal-forbidden-edit" style="display:none;width:100%;min-height:40px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px;resize:vertical"></textarea></div>
+    <div style="margin-top:16px;display:flex;gap:8px" id="modal-buttons">
+      <button class="btn" id="modal-edit-btn" onclick="startEdit()">✏️ 编辑</button>
+      <button class="btn primary" id="modal-save-btn" onclick="saveEdit()" style="display:none">💾 保存</button>
+      <button class="btn" id="modal-cancel-btn" onclick="cancelEdit()" style="display:none">取消</button>
+      <span style="font-size:11px;color:var(--muted);margin-left:8px;align-self:center" id="modal-save-status"></span>
+    </div>
+  </div>
+</div>
+
+<script src="/static/dashboard.js"></script>
+</body>
+</html>

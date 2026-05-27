@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install pyyaml>=6.0
+
+      - name: Syntax check all scripts
+        run: python -m compileall scripts/ lib/
+
+      - name: Verify wd.py CLI entry point
+        run: python wd.py --help
+
+      - name: Verify self-check
+        run: python scripts/director_doctor.py --self
+
+      - name: Smoke test
+        run: python scripts/test_smoke.py
+
+      - name: Verify lib imports
+        run: python -c "from lib.common import *; from lib.llm import call_llm; print('OK')"

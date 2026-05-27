@@ -6,11 +6,11 @@
 
 **五大子系统不再依赖外部 story-* skill，内置完整方法论。**
 
-- scanner: 新增 `modules\chapter-review\guide.md`（扫榜流程+平台数据源+信号提取规则）+ 5 个专用 reference 文件
-- analyzer: 新增 `modules\chapter-review\guide.md`（快速/深度拆文流程+角色位抽象）+ 5 个专用 reference 文件
-- writer: 新增 `modules\chapter-review\guide.md`（完整写作方法论：情绪驱动/黄金三章/钩子13式/三维度织入/禁用词/长篇短篇双模式）+ 18 个专用 reference 文件
-- reviewer: 新增 `modules\chapter-review\guide.md`（L1/L2/L3 分级+4 Agent 并行审查+R0-R4 修复分级）
-- polisher: 新增 `modules\chapter-review\guide.md`（AI味 vs 自然文本基准+分级保护+替换词表）
+- scanner: 新增 `subsystems/scanner/guide.md`（扫榜流程+平台数据源+信号提取规则）+ 5 个专用 reference 文件
+- analyzer: 新增 `subsystems/analyzer/guide.md`（快速/深度拆文流程+角色位抽象）+ 5 个专用 reference 文件
+- writer: 新增 `subsystems/writer/guide.md`（完整写作方法论：情绪驱动/黄金三章/钩子13式/三维度织入/禁用词/长篇短篇双模式）+ 18 个专用 reference 文件
+- reviewer: 新增 `subsystems/reviewer/guide.md`（L1/L2/L3 分级+4 Agent 并行审查+R0-R4 修复分级）
+- polisher: 新增 `subsystems/polisher/guide.md`（AI味 vs 自然文本基准+分级保护+替换词表）
 
 ### 共享 reference 整合
 

@@ -11,12 +11,19 @@ Checks:
 """
 
 from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
 from pathlib import Path
-import argparse, json, re, sys
 
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import parse_chapter_queue, read_text  # noqa: E402
 
-def read(p: Path) -> str:
-    return p.read_text(encoding="utf-8-sig", errors="ignore") if p.exists() else ""
+# Note: local parse_volumes() kept because it extracts boss_layers from cells[2],
+# which common.parse_volume_map() does not support.
 
 
 def parse_volumes(text: str) -> list[dict]:
@@ -34,7 +41,6 @@ def parse_volumes(text: str) -> list[dict]:
         if not rm:
             continue
         start, end = int(rm.group(1)), int(rm.group(2))
-        # Extract boss layers from cells[2]
         boss_layers = []
         boss_col = cells[2] if len(cells) > 2 else ""
         for n in re.findall(r"(\d+)", boss_col):
@@ -66,7 +72,6 @@ def parse_first_clears(text: str) -> list[dict]:
             continue
         layer = int(layer_match.group(1))
         first_clear = cells[1].strip() if len(cells) > 1 else ""
-        # Determine if protagonist (沈拓) or Feng Zheng (冯铮)
         is_protagonist = "沈拓" in first_clear
         is_fengzheng = "冯铮" in first_clear
         clears.append({
@@ -76,28 +81,6 @@ def parse_first_clears(text: str) -> list[dict]:
             "is_fengzheng": is_fengzheng,
         })
     return clears
-
-
-def parse_chapter_queue(path: Path) -> list[dict]:
-    rows = []
-    for line in read(path).splitlines():
-        s = line.strip()
-        if not s.startswith("|") or "---" in s or "Chapter" in s:
-            continue
-        cells = [c.strip() for c in s.strip("|").split("|")]
-        if len(cells) < 6:
-            continue
-        n = re.sub(r"\D", "", cells[0])
-        if not n.isdigit():
-            continue
-        rows.append({
-            "chapter": int(n),
-            "title": cells[1],
-            "goal": cells[2],
-            "premise_hit": cells[3],
-            "forbidden": cells[4],
-        })
-    return rows
 
 
 def parse_progress_targets(text: str) -> list[dict]:
@@ -135,7 +118,7 @@ def find_protagonist_clears_in_queue(chapters: list[dict]) -> list[dict]:
     """Find chapters where protagonist GETS a first clear (not just observes one)."""
     clears = []
     for ch in chapters:
-        combined = f"{ch['title']} {ch['goal']}"
+        combined = f"{ch['title_hint']} {ch['goal']}"
         # Must have both 首通 AND explicit protagonist signal
         if "首通" not in combined:
             continue
@@ -163,7 +146,7 @@ def find_boss_layer_chapters(chapters: list[dict], layer: int) -> list[int]:
     """Find chapters that mention a specific boss layer."""
     chs = []
     for ch in chapters:
-        combined = f"{ch['title']} {ch['goal']}"
+        combined = f"{ch['title_hint']} {ch['goal']}"
         if f"第{layer}层" in combined or f"第 {layer} 层" in combined:
             chs.append(ch["chapter"])
     return chs
@@ -185,14 +168,14 @@ def validate(book_dir: str) -> dict:
         return {"status": "FAIL", "issues": [{"severity": "FAIL", "type": "pacing",
                 "issue": "chapter_queue.md 不存在"}]}
 
-    vm_text = read(vm_path)
+    vm_text = read_text(vm_path)
     volumes = parse_volumes(vm_text)
     first_clears = parse_first_clears(vm_text)
     chapters = parse_chapter_queue(cq_path)
     queue_chs = len(chapters)
     queue_max_layer = 0
     for ch in chapters:
-        combined = f"{ch['title']} {ch['goal']}"
+        combined = f"{ch['title_hint']} {ch['goal']}"
         for layer in re.findall(r"通过第\s*(\d+)\s*层|到达第\s*(\d+)\s*层|拿下第\s*(\d+)\s*层|第\s*(\d+)\s*层.*首通|速通第\s*(\d+)\s*层|过第\s*(\d+)\s*层", combined):
             for g in layer:
                 if g:

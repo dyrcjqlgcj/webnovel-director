@@ -10,15 +10,16 @@ Outputs a PASS/WARN/FAIL report suitable as input for post_writeback.
 """
 from __future__ import annotations
 from pathlib import Path
+import sys
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import read_text
 import argparse, datetime, json, re
 
 # ── helpers ──
 
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig", errors="ignore") if path.exists() else ""
-
 def load_task_package(path: Path) -> dict | None:
-    text = read(path)
+    text = read_text(path)
     if not text: return None
     pkg = {}
     for key, default in [("chapter",0), ("chapter_goal",""), ("title_hint",""), ("executor","inkos")]:
@@ -53,7 +54,7 @@ def load_task_package(path: Path) -> dict | None:
 
 def load_from_chapter_queue(cq_path: Path, chapter: int) -> dict | None:
     """Extract a single chapter's data from chapter_queue.md table."""
-    text = read(cq_path)
+    text = read_text(cq_path)
     if not text:
         return None
     for line in text.splitlines():
@@ -194,7 +195,7 @@ def main() -> int:
                 print(f"依据：章节文件不存在 {args.text}")
                 print("下一步：停止")
                 return 1
-        chapter_text = read(tp_text)
+        chapter_text = read_text(tp_text)
 
     if chapter_text:
         results.append(("字长", check_length(chapter_text)))
@@ -259,7 +260,7 @@ def main() -> int:
     history = {}
     if rh_path.exists():
         try:
-            history = json.loads(read(rh_path))
+            history = json.loads(read_text(rh_path))
         except json.JSONDecodeError:
             pass
     history[str(args.chapter)] = {

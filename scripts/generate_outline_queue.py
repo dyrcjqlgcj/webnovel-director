@@ -10,17 +10,16 @@ context-aware templates. User reviews and refines after generation.
 """
 
 from __future__ import annotations
+
+import argparse
+import datetime
+import re
+import sys
 from pathlib import Path
-import argparse, datetime, json, re, sys
 
-
-def read(p: Path) -> str:
-    return p.read_text(encoding="utf-8-sig", errors="ignore") if p.exists() else ""
-
-
-def write(p: Path, content: str):
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(content, encoding="utf-8")
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import read_text, write_text  # noqa: E402
 
 
 def parse_volumes(text: str) -> list[dict]:
@@ -45,15 +44,15 @@ def extract_concepts(premise_text: str) -> dict:
     """Extract core concepts from premise.md for template injection."""
     concepts = {"title": "", "protagonist": "", "core_ability": "", "forbidden": []}
 
-    m = re.search(r"书名[：:]\s*(.+)", premise_text)
+    m = re.search(r"书名承诺[：:]\s*\n*[> ]*(.+)", premise_text)
     if m:
         concepts["title"] = m.group(1).strip()
 
-    m = re.search(r"主角[：:]\s*(.+)", premise_text)
+    m = re.search(r"(?:主角|主角处境)[：:]\s*\n*[*_]{0,2}\s*(.+)", premise_text)
     if m:
         concepts["protagonist"] = m.group(1).strip()
 
-    m = re.search(r"金手指[：:]\s*(.+)", premise_text)
+    m = re.search(r"(?:金手指|核心爽点机制|核心能力)[：:]\s*\n*[*_]{0,2}\s*(.+)", premise_text)
     if m:
         concepts["core_ability"] = m.group(1).strip()
 
@@ -119,10 +118,10 @@ def generate_queue(book_dir: str, num_chapters: int = 20) -> str:
         print("ERROR: premise.md not found. Run init_project.py first.")
         sys.exit(1)
 
-    premise_text = read(pm_path)
+    premise_text = read_text(pm_path)
     concepts = extract_concepts(premise_text)
 
-    volumes = parse_volumes(read(vm_path)) if vm_path else []
+    volumes = parse_volumes(read_text(vm_path)) if vm_path else []
 
     lines = [
         "# Chapter Queue",
@@ -159,13 +158,13 @@ def generate_from_index(book_dir: str, start_ch: int = 1, count: int = 20) -> st
         sys.exit(1)
 
     pm_path = book / "director" / "premise.md"
-    premise_text = read(pm_path) if pm_path.exists() else ""
+    premise_text = read_text(pm_path) if pm_path.exists() else ""
     concepts = {}
     if premise_text:
-        m = re.search(r"书名[：:]\s*(.+)", premise_text); concepts["title"] = m.group(1).strip() if m else ""
-        m = re.search(r"主角[：:]\s*(.+)", premise_text); concepts["protagonist"] = m.group(1).strip() if m else ""
+        m = re.search(r"书名承诺[：:]\s*\n*[> ]*(.+)", premise_text); concepts["title"] = m.group(1).strip() if m else ""
+        m = re.search(r"(?:主角|主角处境)[：:]\s*\n*[*_]{0,2}\s*(.+)", premise_text); concepts["protagonist"] = m.group(1).strip() if m else ""
 
-    idx_text = read(idx_path)
+    idx_text = read_text(idx_path)
     entries = {}
     for line in idx_text.splitlines():
         s = line.strip()
@@ -247,10 +246,10 @@ def main() -> int:
     output_path = Path(args.book_dir) / "director" / "chapter_queue.md"
     if output_path.exists():
         bak = output_path.with_suffix(".md.bak")
-        write(bak, read(output_path))
+        write_text(bak, read_text(output_path))
         print(f"已备份: {bak}")
 
-    write(output_path, content)
+    write_text(output_path, content)
     print(f"已生成: {output_path}")
     print(f"  章节数: {args.chapters}")
     print(f"  下一步: 逐章审查并细化 Goal/Premise Must Hit/Forbidden 列")

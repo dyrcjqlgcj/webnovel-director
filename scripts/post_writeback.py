@@ -11,37 +11,24 @@ edits chapter prose. Designed to be called after chapter-review Level 1.
 """
 from __future__ import annotations
 from pathlib import Path
+import sys
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import read_text, write_text, strip_json5
 import argparse, datetime, json, re
 
 VALID_AUDITS = {"PASS", "WARN", "FAIL"}
-
-
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig", errors="ignore") if path.exists() else ""
-
-
-def write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
 
 
 def backup(path: Path) -> None:
     if path.exists():
         stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         bak = path.with_name(path.name + f".bak.{stamp}")
-        bak.write_text(read(path), encoding="utf-8")
-
-
-def strip_json5(text: str) -> str:
-    text = re.sub(r"//.*", "", text)
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    text = re.sub(r"([,{]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:", r'\1"\2":', text)
-    text = re.sub(r",\s*([}\]])", r"\1", text)
-    return text
+        bak.write_text(read_text(path), encoding="utf-8")
 
 
 def load_state(path: Path) -> dict:
-    text = read(path)
+    text = read_text(path)
     if not text:
         return {}
     try:
@@ -73,8 +60,8 @@ def dump_state_json5(state: dict) -> str:
 
 
 def append_line(path: Path, line: str) -> None:
-    old = read(path).rstrip()
-    write(path, old + "\n" + line + "\n")
+    old = read_text(path).rstrip()
+    write_text(path, old + "\n" + line + "\n")
 
 
 def update_queue(text: str, chapter: int, audit: str) -> tuple[str, bool]:
@@ -200,7 +187,7 @@ def main() -> int:
 
     last_audit_text = make_last_audit(args.chapter, args.audit, args.summary, args.problem, args.suggestion, next_step)
     audit_row = f"| {now} | post-writeback | Ch{args.chapter:04d} | {args.audit} | {args.summary.replace('|','/')} | {next_step} |"
-    q_text, q_changed = update_queue(read(book/"director/chapter_queue.md"), args.chapter, args.audit)
+    q_text, q_changed = update_queue(read_text(book/"director/chapter_queue.md"), args.chapter, args.audit)
 
     # truth content: chapter-level sections that replace, not append
     state_content = "\n".join([f"- 审查：{args.audit}", f"- 摘要：{args.summary}"] + [f"- {x}" for x in args.state_change])
@@ -221,23 +208,23 @@ def main() -> int:
     if args.write:
         for rel in ["director/director_state.json5", "director/last_audit.md", "director/audit_log.md", "director/chapter_queue.md", "truth/current_state.md", "truth/resource_ledger.md", "truth/particle_ledger.md", "truth/pending_hooks.md"]:
             backup(book/rel)
-        write(state_path, dump_state_json5(state))
-        write(book/"director/last_audit.md", last_audit_text)
+        write_text(state_path, dump_state_json5(state))
+        write_text(book/"director/last_audit.md", last_audit_text)
         append_line(book/"director/audit_log.md", audit_row)
         if q_changed:
-            write(book/"director/chapter_queue.md", q_text)
+            write_text(book/"director/chapter_queue.md", q_text)
         # Use upsert (replace-or-insert) for truth files
-        write(book/"truth/current_state.md", upsert_section(read(book/"truth/current_state.md"), args.chapter, state_content))
+        write_text(book/"truth/current_state.md", upsert_section(read_text(book/"truth/current_state.md"), args.chapter, state_content))
         if expire_res_rows:
-            write(book/"truth/resource_ledger.md", upsert_table_rows(read(book/"truth/resource_ledger.md"), args.chapter, expire_res_rows))
+            write_text(book/"truth/resource_ledger.md", upsert_table_rows(read_text(book/"truth/resource_ledger.md"), args.chapter, expire_res_rows))
         if expire_part_rows:
-            write(book/"truth/particle_ledger.md", upsert_table_rows(read(book/"truth/particle_ledger.md"), args.chapter, expire_part_rows))
+            write_text(book/"truth/particle_ledger.md", upsert_table_rows(read_text(book/"truth/particle_ledger.md"), args.chapter, expire_part_rows))
         if res_rows:
-            write(book/"truth/resource_ledger.md", upsert_table_rows(read(book/"truth/resource_ledger.md"), args.chapter, res_rows))
+            write_text(book/"truth/resource_ledger.md", upsert_table_rows(read_text(book/"truth/resource_ledger.md"), args.chapter, res_rows))
         if particle_rows:
-            write(book/"truth/particle_ledger.md", upsert_table_rows(read(book/"truth/particle_ledger.md"), args.chapter, particle_rows))
+            write_text(book/"truth/particle_ledger.md", upsert_table_rows(read_text(book/"truth/particle_ledger.md"), args.chapter, particle_rows))
         if hook_rows:
-            write(book/"truth/pending_hooks.md", upsert_table_rows(read(book/"truth/pending_hooks.md"), args.chapter, hook_rows))
+            write_text(book/"truth/pending_hooks.md", upsert_table_rows(read_text(book/"truth/pending_hooks.md"), args.chapter, hook_rows))
     result = {"status":"PASS", "audit":args.audit, "chapter":args.chapter, "write":args.write, "queueChanged":q_changed, "nextStep":next_step, "blockers":blockers}
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))

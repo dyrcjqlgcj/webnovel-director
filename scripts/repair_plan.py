@@ -15,11 +15,11 @@ classified repair plan following webnovel-director"s repair-feedback protocol:
 """
 from __future__ import annotations
 from pathlib import Path
+import sys as _sys
+_skill_root = Path(__file__).resolve().parent.parent
+_sys.path.insert(0, str(_skill_root))
+from lib.common import read_text
 import argparse, datetime, json, re, sys
-
-
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig", errors="ignore") if path.exists() else ""
 
 
 # ── classification logic ──
@@ -179,7 +179,7 @@ def main() -> int:
             return 1
         review_source = str(review_path)
         try:
-            review_data = json.loads(read(review_path))
+            review_data = json.loads(read_text(review_path))
         except Exception:
             review_data = None
         if review_data:

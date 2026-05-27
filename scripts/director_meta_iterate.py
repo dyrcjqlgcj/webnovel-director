@@ -19,6 +19,11 @@ from __future__ import annotations
 import argparse, datetime, json, os, re, subprocess, sys, time
 from pathlib import Path
 
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import read_text, write_text
+from lib.llm import call_llm
+
 # ── Discovery ──
 
 def find_director_root() -> Path:
@@ -33,15 +38,6 @@ def find_director_root() -> Path:
         if (base / "SKILL.md").exists():
             return base
     raise FileNotFoundError("Cannot find webnovel-director root (SKILL.md not found)")
-
-
-def read(p: Path) -> str:
-    return p.read_text(encoding="utf-8-sig", errors="ignore") if p.exists() else ""
-
-
-def write(p: Path, content: str):
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(content, encoding="utf-8")
 
 
 # ── Check 1: Module 5-file protocol ──
@@ -87,7 +83,7 @@ def check_script_syntax(root: Path) -> list[dict]:
     for py_file in sorted(scripts_dir.glob("*.py")):
         try:
             with open(py_file, "r", encoding="utf-8-sig") as f:
-                compile(f.read(), str(py_file), "exec")
+                compile(f.read_text(), str(py_file), "exec")
         except SyntaxError as e:
             issues.append({"type": "script_syntax", "severity": "FAIL",
                            "file": py_file.name,
@@ -118,7 +114,7 @@ def check_cross_references(root: Path) -> list[dict]:
         if "subsystems/" in rel_path and "guide.md" not in rel_path:
             continue
 
-        text = read(md_file)
+        text = read_text(md_file)
         for m in ref_pattern.finditer(text):
             ref_path = m.group(1)
             if ref_path.startswith("http") or ref_path.startswith("/"):
@@ -158,7 +154,7 @@ def check_subsystem_guides(root: Path) -> list[dict]:
                            "issue": f"子系统 {ss_name} 缺少 guide.md"})
             continue
 
-        text = read(guide)
+        text = read_text(guide)
         for topic in required_topics:
             if topic not in text:
                 issues.append({"type": "subsystem_guide", "severity": "WARN",
@@ -177,7 +173,7 @@ def check_skill_routing(root: Path) -> list[dict]:
         return [{"type": "skill_routing", "severity": "FAIL",
                  "issue": "SKILL.md 不存在"}]
 
-    text = read(skill_md)
+    text = read_text(skill_md)
 
     # Check for external references that should be internal
     external_refs = ["story-", "oh-story", "inkos"]
@@ -212,8 +208,8 @@ def check_reference_consistency(root: Path) -> list[dict]:
     files = list(craft_dir.glob("*.md"))
     for i, f1 in enumerate(files):
         for f2 in files[i+1:]:
-            t1 = read(f1)
-            t2 = read(f2)
+            t1 = read_text(f1)
+            t2 = read_text(f2)
             # Simple duplicate detection: check if first 200 chars are identical
             if len(t1) > 200 and len(t2) > 200 and t1[:200] == t2[:200]:
                 issues.append({"type": "reference_consistency", "severity": "WARN",
@@ -268,7 +264,7 @@ def apply_deterministic_fixes(root: Path, issues: list[dict]) -> int:
                         "examples-bad.md": f"# {mod_name} - 反例\n\n待补充。\n",
                         "sources.md": f"# {mod_name} - 来源\n\n待补充。\n",
                     }.get(missing, f"# {missing}\n\n待补充。\n")
-                    write(stub_path, stub_content)
+                    write_text(stub_path, stub_content)
                     fixes += 1
                     print(f"  [FIX] 创建 {mod_name}/{missing} (占位)")
 
@@ -283,10 +279,10 @@ def apply_deterministic_fixes(root: Path, issues: list[dict]) -> int:
                 if candidates:
                     correct_path = str(candidates[0].relative_to(root))
                     src_path = root / src
-                    old_text = read(src_path)
+                    old_text = read_text(src_path)
                     new_text = old_text.replace(ref, correct_path)
                     if new_text != old_text:
-                        write(src_path, new_text)
+                        write_text(src_path, new_text)
                         fixes += 1
                         print(f"  [FIX] 修正引用: {src} 中 {ref} → {correct_path}")
 
@@ -294,48 +290,6 @@ def apply_deterministic_fixes(root: Path, issues: list[dict]) -> int:
 
 
 # ── LLM-backed fixes ──
-
-def _call_llm(prompt: str, timeout: int = 120) -> str:
-    """Call LLM with fallback strategies."""
-    # Strategy 1: DeepSeek API
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
-    if api_key:
-        import urllib.request, urllib.error
-        data = json.dumps({
-            "model": "deepseek-chat",
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 2000, "temperature": 0.7,
-        }).encode("utf-8")
-        req = urllib.request.Request(
-            "https://api.deepseek.com/v1/chat/completions",
-            data=data,
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-        )
-        for _ in range(3):
-            try:
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
-                    result = json.loads(resp.read())
-                    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    if content:
-                        return content
-            except Exception:
-                time.sleep(2)
-
-    # Strategy 2: OpenClaw gateway
-    try:
-        result = subprocess.run(
-            ["openclaw", "agent", "--json", "--local", "--message", prompt],
-            capture_output=True, text=True, encoding="utf-8", timeout=timeout,
-            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-        )
-        if result.returncode == 0:
-            data = json.loads(result.stdout)
-            return data.get("reply") or data.get("content") or ""
-    except Exception:
-        pass
-
-    return ""
-
 
 def generate_llm_fix_prompt(root: Path, group_type: str, issues: list[dict]) -> str:
     """Generate a prompt for LLM to fix a group of issues."""
@@ -345,8 +299,8 @@ def generate_llm_fix_prompt(root: Path, group_type: str, issues: list[dict]) -> 
     )
 
     # Provide relevant context files
-    skill_md = read(root / "SKILL.md")[:2000]
-    architecture = read(root / "references" / "architecture.md")[:1500]
+    skill_md = read_text(root / "SKILL.md")[:2000]
+    architecture = read_text(root / "references" / "architecture.md")[:1500]
 
     return f"""你是 webnovel-director 项目的维护专家。检测到以下问题（类型：{group_type}）：
 
@@ -430,7 +384,7 @@ def meta_iterate(root: Path, max_rounds: int = 3, dry_run: bool = False,
             if grp_issues[0].get("severity") == "FAIL":
                 print(f"  [LLM] 修复组: {group_type} ({len(grp_issues)} 个 FAIL)")
                 prompt = generate_llm_fix_prompt(root, group_type, grp_issues)
-                response = _call_llm(prompt)
+                response = call_llm(prompt)
                 if response:
                     print(f"    LLM 建议: {response[:200]}...")
                     # Apply simple text replacements from LLM response
@@ -441,7 +395,7 @@ def meta_iterate(root: Path, max_rounds: int = 3, dry_run: bool = False,
                             fix_action = fm.group(2).strip()
                             target = root / file_path_str
                             if target.exists():
-                                old = read(target)
+                                old = read_text(target)
                                 # Attempt simple replacement
                                 if "替换" in fix_action or "改为" in fix_action:
                                     llm_fixes += 1

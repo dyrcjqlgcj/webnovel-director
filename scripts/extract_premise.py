@@ -12,11 +12,11 @@ the director's truth source.
 """
 from __future__ import annotations
 from pathlib import Path
+import sys
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import read_text
 import argparse, datetime, json, re
-
-
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig", errors="ignore") if path.exists() else ""
 
 
 def extract_section(text: str, heading: str) -> str:
@@ -74,10 +74,10 @@ def build_premise(book_dir: Path, meta: dict) -> str:
     title = meta.get("title") or book_dir.name
 
     # Read source files
-    intent_text = read(book_dir / "story" / "author_intent.md")
-    rules_text = read(book_dir / "story" / "book_rules.md")
-    volume_text = read(book_dir / "story" / "outline" / "volume_map.md")
-    frame_text = read(book_dir / "story" / "outline" / "story_frame.md")
+    intent_text = read_text(book_dir / "story" / "author_intent.md")
+    rules_text = read_text(book_dir / "story" / "book_rules.md")
+    volume_text = read_text(book_dir / "story" / "outline" / "volume_map.md")
+    frame_text = read_text(book_dir / "story" / "outline" / "story_frame.md")
 
     # 书名承诺
     one_liner = extract_section(intent_text, "一句话") or ""
@@ -191,7 +191,7 @@ def main() -> int:
     bj = book / "book.json"
     if bj.exists():
         try:
-            meta = json.loads(read(bj))
+            meta = json.loads(read_text(bj))
         except Exception:
             pass
 
