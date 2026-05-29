@@ -1,5 +1,33 @@
 # Changelog
 
+## v3.0.0 (2026-05-29)
+
+### 架构重构：导演直执行
+- **去掉外部 Agent spawn**：director 不再 spawn Claude Code 或外部 LLM
+- **导演 = 执行者**：所有写作、审查、大纲生成由 director（小爪爪）直接完成
+- 脚本只做结构化校验，不调外部 API
+
+### 工作流简化：9 步 → 3 阶段
+- Phase 1：选题锁定（scanner → concept-gate → init → premise）
+- Phase 2：大纲布设（volume_map → chapter_queue → truth → outline 闸门）
+- Phase 3：正文产出（逐章：extend → 写前闸 → 写 → 审 → 润 → 回写）
+- 闸门一个不少，但用户只需在三阶段交界处确认
+
+### extend_outline.py 去 LLM 化
+- 移除 `call_llm()` 函数
+- 新增 `build_extension_request()` 生成结构化请求文件
+- director 读取 `director/outline_extension_request.md` 后手动续细纲
+
+### 文档同步
+- SKILL.md：完整重写，反映直执行架构
+- 脚本表：完整 29 个脚本 + 用途 + 是否调 LLM
+- 路径统一正斜杠
+- 移除所有 spawn/agent 引用
+- `references/architecture.md`、`references/roadmap.md` 同步更新
+
+### 清理
+- `scripts/__pycache__/` 删除（27 个 .pyc）
+
 ## v2.0.0 (2026-05-26)
 
 ### P0: 路径修复
