@@ -16,8 +16,10 @@ from __future__ import annotations
 from pathlib import Path
 import argparse, json, re, subprocess, sys
 
-WORKSPACE = Path.home() / ".openclaw" / "workspace"
-ACTIVE_FILE = WORKSPACE / ".active_project"
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+PROJECTS_DIR = SKILL_ROOT / "projects" / "novel"
+SHORT_DIR = SKILL_ROOT / "projects" / "short"
+ACTIVE_FILE = SKILL_ROOT / ".active_project"
 SCRIPTS_DIR = Path(__file__).resolve().parent
 
 # ----------------------------------------------------------------
@@ -25,11 +27,11 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 # ----------------------------------------------------------------
 
 def find_projects() -> list[Path]:
-    """Walk WORKSPACE and find dirs containing director/director_state.json5."""
+    """Walk PROJECTS_DIR and find dirs containing director/director_state.json5."""
     projects: list[Path] = []
-    if not WORKSPACE.exists():
+    if not PROJECTS_DIR.exists():
         return projects
-    for d in WORKSPACE.iterdir():
+    for d in PROJECTS_DIR.iterdir():
         if not d.is_dir() or d.name.startswith("."):
             continue
         state = d / "director" / "director_state.json5"
@@ -108,12 +110,12 @@ def cmd_list(json_output: bool = False) -> int:
         print(json.dumps(results, ensure_ascii=False, indent=2))
     elif not projects:
         print("结论：PASS（无项目）")
-        print("工作区：", WORKSPACE)
+        print("工作区：", PROJECTS_DIR)
         print("问题：暂无 webnovel-director 项目")
         print("建议：运行 `project_manager.py new <dir> --title \"书名\"` 创建新项目")
     else:
         print(f"结论：PASS（共 {len(projects)} 个项目）")
-        print(f"工作区：{WORKSPACE}")
+        print(f"工作区：{PROJECTS_DIR}")
         for r in results:
             marker = " *" if r["active"] else "  "
             cw = "Y" if r["canWrite"] else "N"
@@ -166,7 +168,7 @@ def cmd_switch(name: str) -> int:
 
 def cmd_new(directory: str, title: str, force: bool = False) -> int:
     """Quick-initialize a new book via init_project.py."""
-    book_dir = WORKSPACE / directory
+    book_dir = PROJECTS_DIR / directory
     if book_dir.exists() and list(book_dir.iterdir()) and not force:
         print(f"结论：FAIL")
         print(f"问题：目录 '{book_dir}' 已存在且非空")
@@ -200,9 +202,9 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""示例:
   python project_manager.py list
-  python project_manager.py doctor 我的书
-  python project_manager.py switch 我的书
-  python project_manager.py new 新书 --title "末日之塔"
+  python project_manager.py doctor 领地战争-每日一格
+  python project_manager.py switch 领地战争-每日一格
+  python project_manager.py new 领地战争-每日一格 --title "领地战争：每日一格"
   python project_manager.py new 新书 --title "末日之塔" --force
 """)
 

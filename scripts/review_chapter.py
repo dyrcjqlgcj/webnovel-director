@@ -191,8 +191,8 @@ def main() -> int:
         tp_text = Path(args.text)
         if not tp_text.exists():
             # Try chapters dir
-            alt = book / "chapters" / f"{ch_str}_*.txt"
-            candidates = list(book.glob(f"chapters/{ch_str}_*.txt")) + list(book.glob(f"chapters/{ch_str}_*.md"))
+            alt = book / "chapters" / f"第{ch_str}章-*.md"
+            candidates = list(book.glob(f"chapters/第{ch_str}章-*.md")) + list(book.glob(f"chapters/第{ch_str}章-*.txt"))
             if candidates:
                 tp_text = candidates[0]
             else:

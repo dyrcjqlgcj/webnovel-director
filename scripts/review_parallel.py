@@ -300,7 +300,7 @@ def main() -> int:
     if args.text:
         tp_text = Path(args.text)
         if not tp_text.exists():
-            candidates = list(book.glob(f"chapters/{ch_str}_*.txt")) + list(book.glob(f"chapters/{ch_str}_*.md"))
+            candidates = list(book.glob(f"chapters/第{ch_str}章-*.md")) + list(book.glob(f"chapters/第{ch_str}章-*.txt"))
             if candidates: tp_text = candidates[0]
         chapter_text = read(tp_text) if tp_text.exists() else ""
 
@@ -512,7 +512,7 @@ def auto_trigger_l3_check(book_dir: str) -> dict:
 
     # Find chapter text
     chapter_text = ""
-    candidates = list(book.glob(f"chapters/{ch_str}_*.txt")) + list(book.glob(f"chapters/{ch_str}_*.md"))
+    candidates = list(book.glob(f"chapters/第{ch_str}章-*.md")) + list(book.glob(f"chapters/第{ch_str}章-*.txt"))
     if candidates:
         chapter_text = read(candidates[0])
 

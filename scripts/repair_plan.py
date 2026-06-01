@@ -303,7 +303,7 @@ def run_batch_mode(book_dir: Path, auto_apply: bool = False) -> int:
         plan = generate_plan(ch["chapter"], highest_level, classified, book_dir, review_source)
         plan_dir = book_dir / "director" / "repair_plans"
         plan_dir.mkdir(parents=True, exist_ok=True)
-        plan_path = plan_dir / f"ch{ch['chapter']:04d}_repair.md"
+        plan_path = plan_dir / f"第{ch['chapter']:04d}章_repair.md"
         plan_path.write_text(plan, encoding="utf-8")
 
         can_auto = auto_apply and highest_level in ("R0", "R1")

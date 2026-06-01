@@ -29,10 +29,8 @@ def read(p: Path) -> str:
 def find_book_text_files(book_dir: Path, ch_num: int) -> Path | None:
     """Find the chapter text file for a given chapter number."""
     ch_str = f"{ch_num:04d}"
-    candidates = (list(book_dir.glob(f"chapters/{ch_str}_*.txt"))
-                + list(book_dir.glob(f"chapters/{ch_str}_*.md"))
-                + list(book_dir.glob(f"chapters/*{ch_str}*.txt"))
-                + list(book_dir.glob(f"chapters/*{ch_str}*.md")))
+    candidates = (list(book_dir.glob(f"chapters/第{ch_str}章-*.md"))
+                + list(book_dir.glob(f"chapters/第{ch_str}章-*.txt")))
     return candidates[0] if candidates else None
 
 

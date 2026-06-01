@@ -28,7 +28,7 @@ def latest_chapter(chapters: Path) -> tuple[int, str]:
     for f in chapters.iterdir():
         if not f.is_file() or f.suffix.lower() not in {".md", ".txt"}:
             continue
-        m = re.match(r"^(\d{4})_(.+)\.(md|txt)$", f.name, re.I)
+        m = re.match(r"^第(\d{4})章-(.+)\.(md|txt)$", f.name, re.I)
         if not m:
             continue
         n = int(m.group(1))
