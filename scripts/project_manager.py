@@ -17,9 +17,10 @@ from pathlib import Path
 import argparse, json, re, subprocess, sys
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
-PROJECTS_DIR = SKILL_ROOT / "projects" / "novel"
-SHORT_DIR = SKILL_ROOT / "projects" / "short"
-ACTIVE_FILE = SKILL_ROOT / ".active_project"
+WORKSPACE = Path.home() / ".openclaw" / "workspace"
+PROJECTS_DIR = WORKSPACE / "webnovel-director" / "projects" / "novel"
+SHORT_DIR = WORKSPACE / "webnovel-director" / "projects" / "short"
+ACTIVE_FILE = WORKSPACE / "webnovel-director" / ".active_project"
 SCRIPTS_DIR = Path(__file__).resolve().parent
 
 # ----------------------------------------------------------------

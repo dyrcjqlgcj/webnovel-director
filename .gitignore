@@ -10,6 +10,5 @@ _claude_task.md
 _claude_result.md
 _test_output.md
 
-# project data (novels)
-projects/
+# runtime state
 .active_project
