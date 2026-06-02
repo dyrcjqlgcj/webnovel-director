@@ -1,5 +1,66 @@
 # Changelog
 
+## v3.0.0 (2026-05-29)
+
+### 架构重构：导演直执行
+- **去掉外部 Agent spawn**：director 不再 spawn Claude Code 或外部 LLM
+- **导演 = 执行者**：所有写作、审查、大纲生成由 director（小爪爪）直接完成
+- 脚本只做结构化校验，不调外部 API
+
+### 工作流简化：9 步 → 3 阶段
+- Phase 1：选题锁定（scanner → concept-gate → init → premise）
+- Phase 2：大纲布设（volume_map → chapter_queue → truth → outline 闸门）
+- Phase 3：正文产出（逐章：extend → 写前闸 → 写 → 审 → 润 → 回写）
+- 闸门一个不少，但用户只需在三阶段交界处确认
+
+### extend_outline.py 去 LLM 化
+- 移除 `call_llm()` 函数
+- 新增 `build_extension_request()` 生成结构化请求文件
+- director 读取 `director/outline_extension_request.md` 后手动续细纲
+
+### 文档同步
+- SKILL.md：完整重写，反映直执行架构
+- 脚本表：完整 29 个脚本 + 用途 + 是否调 LLM
+- 路径统一正斜杠
+- 移除所有 spawn/agent 引用
+- `references/architecture.md`、`references/roadmap.md` 同步更新
+
+### 清理
+- `scripts/__pycache__/` 删除（27 个 .pyc）
+
+## v2.0.0 (2026-05-26)
+
+### P0: 路径修复
+- 11 处双路径错误修复
+- 8 处 templates 路径修复
+
+### P1: 自愈引擎增强 + CI/CD
+- `scripts\director_meta_iterate.py` 增强：自动修复双路径等常见错误
+- GitHub CI：push 自动跑 `scripts\test_smoke.py` + `scripts\director_meta_iterate.py`
+
+### P2: 项目管理
+- 新增 `scripts\project_manager.py`：多书索引 + 批量 doctor + 切换活跃项目
+- 新增 `scripts\migrate_project.py`：inkos → webnovel-director 一键迁移
+- `templates\director_state.json5` 升级：加 vcs/remote/branch 字段
+
+### P3: 审查增强
+- L3 审查自动化：每 30 章/卷末自动触发 4 Agent 并行
+- 新增 `scripts\scoring_card.py`：审查评分卡 A~F + 趋势箭头
+- `scripts\validate_pacing.py` → `scripts\outline_gate_review.py` 联动拦截
+
+### P4: 仪表盘升级
+- `scripts\dashboard_server.py` CLI 模式（`--mode cli` 终端彩色面板）
+- 新增 `scripts\trend_chart.py`：章节趋势图表（字数 × 审查分 × 偏离度）
+- 一键修复按钮：批量触发 `scripts\repair_plan.py`
+
+### P5: 工具链集成
+- 新增 `scripts\concept_gate_import.py`：story-* skill 输出直通概念闸门
+- 新增 `scripts\cron_auditor.py`：自动检测 gateway cron + 失联告警
+- 封面生成联动：`build_task_package.py --with-cover`
+
+### 脚本总数
+- 21 → 29
+
 ## v1.1.0 (2026-05-25)
 
 ### 子系统自包含化（P0）

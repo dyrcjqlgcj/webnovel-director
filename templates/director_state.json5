@@ -11,5 +11,17 @@
   canWrite: false,
   blockers: ["outline-gate 未通过"],
   lastAuditStatus: "NONE",
-  updatedAt: "{{UPDATED_AT}}"
+  updatedAt: "{{UPDATED_AT}}",
+  vcs: {
+    enabled: false,
+    remote: "",        // git remote URL
+    branch: "main",
+    lastPush: "",
+  },
+  cron: {
+    enabled: false,
+    jobId: "",         // gateway cron job ID
+    schedule: "",      // cron 表达式
+    lastRun: "",
+  },
 }

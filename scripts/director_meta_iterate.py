@@ -122,6 +122,7 @@ def check_cross_references(root: Path) -> list[dict]:
             if any(ref_path.startswith(p) for p in skip_prefixes):
                 continue
 
+            ref_path = ref_path.replace('\\', '/')
             candidate = (md_file.parent / ref_path).resolve()
             candidate2 = (root / ref_path).resolve()
 
@@ -219,6 +220,24 @@ def check_reference_consistency(root: Path) -> list[dict]:
     return issues
 
 
+# ── Check 7: Double path detection ──
+
+DOUBLE_PATH_PATTERN = re.compile(r'`scripts/scripts\\\\([^`]+)`')
+
+def check_double_paths(root: Path) -> list[dict]:
+    """扫描所有 .md 文件，检测 scripts/scripts\\ 双路径错误"""
+    issues = []
+    for md_file in root.rglob("*.md"):
+        text = read(md_file)
+        for m in DOUBLE_PATH_PATTERN.finditer(text):
+            issues.append({"type": "double_path", "severity": "FAIL",
+                          "source_file": str(md_file.relative_to(root)),
+                          "bad_path": m.group(0),
+                          "correct_path": f"`scripts\\{m.group(1)}`",
+                          "issue": f"{md_file.relative_to(root)} 存在双路径: {m.group(0)}"})
+    return issues
+
+
 # ── Issue collection & grouping ──
 
 def collect_all_issues(root: Path) -> list[dict]:
@@ -230,6 +249,7 @@ def collect_all_issues(root: Path) -> list[dict]:
     all_issues.extend(check_subsystem_guides(root))
     all_issues.extend(check_skill_routing(root))
     all_issues.extend(check_reference_consistency(root))
+    all_issues.extend(check_double_paths(root))
     return all_issues
 
 
@@ -285,6 +305,20 @@ def apply_deterministic_fixes(root: Path, issues: list[dict]) -> int:
                         write_text(src_path, new_text)
                         fixes += 1
                         print(f"  [FIX] 修正引用: {src} 中 {ref} → {correct_path}")
+
+        # Fix 3: Double path → replace scripts/scripts\xxx with scripts\xxx
+        if typ == "double_path":
+            bad_path = issue.get("bad_path", "")
+            correct_path = issue.get("correct_path", "")
+            src = issue.get("source_file", "")
+            if bad_path and correct_path and src:
+                src_path = root / src
+                old_text = read(src_path)
+                new_text = old_text.replace(bad_path, correct_path)
+                if new_text != old_text:
+                    write(src_path, new_text)
+                    fixes += 1
+                    print(f"  [FIX] 修复双路径: {src} 中 {bad_path} → {correct_path}")
 
     return fixes
 
