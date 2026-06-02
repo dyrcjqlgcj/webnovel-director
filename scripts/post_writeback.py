@@ -67,7 +67,7 @@ def append_line(path: Path, line: str) -> None:
 def update_queue(text: str, chapter: int, audit: str) -> tuple[str, bool]:
     new_lines=[]
     changed=False
-    next_status = "DONE" if audit == "PASS" else ("WARN_REVIEW" if audit == "WARN" else "BLOCKED")
+    next_status = "已写" if audit == "PASS" else ("需修订" if audit == "WARN" else "阻塞")
     for line in text.splitlines():
         s=line.strip()
         if s.startswith("|") and "---" not in s and "Chapter" not in s:
@@ -75,7 +75,8 @@ def update_queue(text: str, chapter: int, audit: str) -> tuple[str, bool]:
             if len(cells) >= 6:
                 n_raw=re.sub(r"\D", "", cells[0])
                 if n_raw and int(n_raw) == chapter:
-                    cells[5]=next_status
+                    status_col = 7 if len(cells) >= 8 else 5
+                    cells[status_col]=next_status
                     line="| " + " | ".join(cells) + " |"
                     changed=True
         new_lines.append(line)

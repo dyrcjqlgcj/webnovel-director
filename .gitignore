@@ -12,6 +12,8 @@ dist/
 build/
 
 # 小说项目目录（不要在工具仓库内创建小说项目）
+books/
+.active_project
 director/
 truth/
 story/

@@ -23,7 +23,7 @@ from lib.common import (  # noqa: E402
     DIRECTOR_PREMISE, DIRECTOR_QUEUE, DIRECTOR_STATE,
     TRUTH_CURRENT_STATE, TRUTH_RESOURCE_LEDGER, TRUTH_PENDING_HOOKS,
     excerpt_file, load_director_state, now_iso, parse_chapter_queue,
-    read_text, status_ok, write_text,
+    read_text, status_ok, write_chapter_queue, write_text,
 )
 from lib.llm import call_llm_writing  # noqa: E402
 
@@ -35,14 +35,16 @@ def build_writing_prompt(book: Path, chapter: int, row: dict, state: dict) -> st
     hooks = excerpt_file(book / TRUTH_PENDING_HOOKS, 1000)
     resources = excerpt_file(book / TRUTH_RESOURCE_LEDGER, 800)
 
-    # Find previous chapter for continuity
+    # Find previous chapter for continuity (search all known chapter dirs)
     prev_text = ""
-    for ch_dir_name in ("正文", "chapters"):
+    for ch_dir_name in ("正文", "chapters", "story/chapters"):
         ch_dir = book / ch_dir_name
         if ch_dir.exists():
             prev_files = sorted(ch_dir.glob(f"第*{chapter-1:03d}*章*.md"))
             if not prev_files:
                 prev_files = sorted(ch_dir.glob(f"第*{chapter-1}*章*.md"))
+            if not prev_files:
+                prev_files = sorted(ch_dir.glob(f"第0*{chapter-1}章*.md"))
             if prev_files:
                 prev_text = read_text(prev_files[-1])[-800:]
                 break
@@ -136,31 +138,29 @@ def main() -> int:
             print(f"错误: {msg}")
         return 1
 
-    # Save to chapters directory
-    ch_dir = book / "chapters"
+    # Save to story/chapters directory (matching project structure)
+    # Use title_hint from chapter_queue for human-readable filename
+    title_hint = row.get("title_hint", "").strip()
+    if title_hint:
+        # Sanitize: remove characters unsafe for filenames
+        safe_title = re.sub(r'[<>:"/\\|?*]', '', title_hint).strip()
+        if safe_title:
+            filename = f"第{args.chapter:03d}章-{safe_title}.md"
+        else:
+            filename = f"第{args.chapter:04d}章.md"
+    else:
+        filename = f"第{args.chapter:04d}章.md"
+    ch_dir = book / "story" / "chapters"
     ch_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"第{args.chapter:04d}章.md"
     out_path = ch_dir / filename
     write_text(out_path, result)
 
     # Update chapter_queue status
-    row["status"] = "written"
-    # Rewrite chapter_queue
-    header = (
-        "| Chapter | 标题提示 | Goal | Premise Must Hit | Forbidden | Status |\n"
-        "|---------|----------|------|------------------|-----------|--------|"
-    )
-    body_lines = []
-    for r in queue:
-        body_lines.append(
-            f"| {r['chapter']:04d} | {r.get('title_hint', '')} | "
-            f"{r.get('goal', '')} | {r.get('premise_must_hit', '')} | "
-            f"{r.get('forbidden', '')} | {r.get('status', '')} |"
-        )
-    write_text(book / DIRECTOR_QUEUE, header + "\n" + "\n".join(body_lines) + "\n")
+    row["status"] = "已写"
+    write_chapter_queue(book / DIRECTOR_QUEUE, queue)
 
     char_count = len(re.sub(r"\s+", "", result))
-    print(f"✅ 第 {args.chapter:04d} 章完成")
+    print(f"[OK] Chapter {args.chapter:04d} done")
     print(f"   文件: {out_path}")
     print(f"   字数: {char_count} 字")
     print(f"   下一步: review_chapter.py --chapter {args.chapter}")

@@ -13,7 +13,7 @@ from pathlib import Path
 import sys
 _skill_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_skill_root))
-from lib.common import read_text
+from lib.common import read_text, parse_chapter_queue
 import argparse, datetime, json, re
 
 # ── helpers ──
@@ -54,30 +54,19 @@ def load_task_package(path: Path) -> dict | None:
 
 def load_from_chapter_queue(cq_path: Path, chapter: int) -> dict | None:
     """Extract a single chapter's data from chapter_queue.md table."""
-    text = read_text(cq_path)
-    if not text:
-        return None
-    for line in text.splitlines():
-        s = line.strip()
-        if not s.startswith("|") or "---" in s or "Chapter" in s:
-            continue
-        cells = [c.strip() for c in s.strip("|").split("|")]
-        if len(cells) < 6:
-            continue
-        n = re.sub(r"\D", "", cells[0])
-        if not n.isdigit() or int(n) != chapter:
-            continue
-        # Convert table row to pkg format
-        goal = cells[2] if len(cells) > 2 else ""
-        premise_hit = cells[3] if len(cells) > 3 else ""
-        forbidden = cells[4] if len(cells) > 4 else ""
-        return {
-            "chapter": chapter,
-            "title_hint": cells[1] if len(cells) > 1 else "",
-            "chapter_goal": goal,
-            "premise_must_hit": [premise_hit] if premise_hit and premise_hit != "-" else [],
-            "forbidden": [forbidden] if forbidden and forbidden != "-" else [],
-        }
+    rows = parse_chapter_queue(cq_path)
+    for r in rows:
+        if r["chapter"] == chapter:
+            goal = r.get("goal", "")
+            premise_hit = r.get("premise_must_hit", "")
+            forbidden = r.get("forbidden", "")
+            return {
+                "chapter": chapter,
+                "title_hint": r.get("title_hint", ""),
+                "chapter_goal": goal,
+                "premise_must_hit": [premise_hit] if premise_hit and premise_hit != "-" else [],
+                "forbidden": [forbidden] if forbidden and forbidden != "-" else [],
+            }
     return None
 
 

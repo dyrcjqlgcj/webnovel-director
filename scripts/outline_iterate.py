@@ -207,7 +207,7 @@ def apply_llm_fix(chapter: int, dimension: str, suggestion: str, book_dir: str) 
                 cells[3] = fix_text
                 changed = True
             elif "forbidden" in dimension.lower():
-                cells[4] = fix_text
+                cells[6 if len(cells) >= 8 else 4] = fix_text
                 changed = True
             elif len(fix_text) > len(cells[2]):
                 cells[2] = fix_text
@@ -346,7 +346,7 @@ def iterate(book_dir: str, max_rounds: int = 3, dry_run: bool = False,
             for group_type, grp_issues in groups.items():
                 print(f"  修复组: {group_type} ({len(grp_issues)} 个问题)")
                 prompt = generate_fix_prompt(book_dir, group_type, grp_issues)
-                print(f"    ⏳ 正在调用 LLM ...")
+                print(f"    [LLM] 正在调用 LLM ...")
                 llm_response = call_llm(prompt, model=model)
                 if not llm_response:
                     print(f"    [WARN] LLM 不可用，本轮无法修复此组")

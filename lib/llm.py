@@ -49,19 +49,65 @@ PROVIDERS: dict[str, dict] = {
 
 
 def _load_config() -> dict:
-    """Load optional config.yaml from the skill root."""
-    config_path = Path(__file__).resolve().parent.parent / "config.yaml"
-    if config_path.exists():
-        try:
-            import yaml
-            with open(config_path, encoding="utf-8") as f:
-                cfg = yaml.safe_load(f) or {}
+    """Load optional config.yaml and config.local.yaml from the skill root.
+
+    Reads api_keys and injects them into os.environ so downstream
+    _call_openai_compatible can pick them up from the expected env vars.
+    """
+    configs: dict = {}
+    config_paths = [
+        Path(__file__).resolve().parent.parent / "config.yaml",
+        Path(__file__).resolve().parent.parent / "config.local.yaml",
+    ]
+    for config_path in config_paths:
+        if config_path.exists():
+            try:
+                import yaml
+                with open(config_path, encoding="utf-8") as f:
+                    cfg = yaml.safe_load(f) or {}
+                # Merge providers
                 if cfg.get("providers"):
                     PROVIDERS.update(cfg["providers"])
-                return cfg
-        except Exception:
-            pass
-    return {}
+                # Inject api_keys into environment
+                api_keys = cfg.get("api_keys", {})
+                if isinstance(api_keys, dict):
+                    for provider_name, key_config in api_keys.items():
+                        if isinstance(key_config, dict):
+                            key = key_config.get("key", "")
+                            base_url = key_config.get("base_url", "")
+                            default_model = key_config.get("default_model", "")
+                        else:
+                            key = key_config
+                            base_url = ""
+                            default_model = ""
+                        if not key or not isinstance(key, str) or not key.startswith("sk-"):
+                            continue
+                        # Register or update provider
+                        if provider_name not in PROVIDERS:
+                            if base_url:
+                                PROVIDERS[provider_name] = {
+                                    "base_url": f"{base_url.rstrip('/')}/chat/completions",
+                                    "api_key_env": f"{provider_name.upper()}_API_KEY",
+                                    "default_model": default_model or "default",
+                                    "api": "openai-completions",
+                                }
+                            else:
+                                PROVIDERS[provider_name] = {
+                                    "base_url": f"https://api.{provider_name}.com/v1/chat/completions",
+                                    "api_key_env": f"{provider_name.upper()}_API_KEY",
+                                    "default_model": default_model or "default",
+                                    "api": "openai-completions",
+                                }
+                        if not os.environ.get(PROVIDERS[provider_name]["api_key_env"]):
+                            os.environ[PROVIDERS[provider_name]["api_key_env"]] = key
+                        if base_url and not PROVIDERS[provider_name].get("base_url"):
+                            PROVIDERS[provider_name]["base_url"] = f"{base_url.rstrip('/')}/chat/completions"
+                        if default_model:
+                            PROVIDERS[provider_name]["default_model"] = default_model
+                configs.update(cfg)
+            except Exception:
+                pass
+    return configs
 
 
 def _call_openai_compatible(prompt: str, model: str = "", provider: str = "deepseek",
