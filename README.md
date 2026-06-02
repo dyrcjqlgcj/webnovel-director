@@ -41,7 +41,7 @@ ln -s /path/to/webnovel-director webnovel-director
 
 ## 🛠️ 方式二：直接使用项目
 
-需要 Python ≥ 3.11，LLM 需要 OpenAI 兼容 API（支持 14 家厂商：DeepSeek / OpenAI / GPTsAPI / OpenRouter / Groq / Together / Fireworks / 硅基流动 / 智谱 / 月之暗面 / 百川 / 通义千问 / DeepBricks / 自定义兼容端点）。
+需要 Python ≥ 3.11，LLM 需要 OpenAI 兼容 API（支持 14 家厂商：DeepSeek / OpenAI / OpenRouter / Groq / Together / Fireworks / 硅基流动 / 智谱 / 月之暗面 / 百川 / 通义千问 / DeepBricks / 自定义兼容端点）。
 
 ### 1. 克隆安装
 
@@ -70,7 +70,6 @@ export DEEPSEEK_API_KEY="sk-..."
 子进程会自动继承父进程的环境变量，无需重复设置。支持的环境变量：
 - `DEEPSEEK_API_KEY` — DeepSeek
 - `OPENAI_API_KEY` — OpenAI
-- `GPTSAPI_API_KEY` — GPTsAPI
 - `OPENROUTER_API_KEY` — OpenRouter
 - 以及其他厂商对应的 `{PROVIDER}_API_KEY`
 
@@ -80,7 +79,6 @@ export DEEPSEEK_API_KEY="sk-..."
 api_keys:
   deepseek: "sk-..."
   # openai: "sk-..."
-  # gptsapi: "sk-..."
 ```
 
 **方式三：仪表盘保存（最方便）**
