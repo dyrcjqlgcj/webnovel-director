@@ -410,6 +410,211 @@ def _find_chapter_file(book_dir: Path, chapter: str) -> str | None:
     return None
 
 
+def _extract_truth_changes(book_dir: Path, chapter: int) -> dict:
+    """Extract structured truth changes from a chapter using LLM analysis.
+    
+    Reads the chapter content and existing truth files, then asks the LLM to
+    identify resource changes, particle/vorbidden advancements, hook updates,
+    and state changes that should be recorded in the truth files.
+    
+    Returns a dict with keys: state_changes, resource_changes, particles,
+    hooks. Each value is a list of strings suitable for --state-change,
+    --resource-change, --particle, --hook flags.
+    On LLM failure, returns empty lists.
+    """
+    try:
+        # Read chapter content
+        ch_file = _find_chapter_file(book_dir, str(chapter))
+        if not ch_file:
+            return {"state_changes": [], "resource_changes": [], "particles": [], "hooks": []}
+        chapter_text = read_text(Path(ch_file))
+        if len(chapter_text) < 100:
+            return {"state_changes": [], "resource_changes": [], "particles": [], "hooks": []}
+        
+        # Truncate for prompt (max ~3000 chars for analysis)
+        chapter_snippet = chapter_text[:3000]
+        if len(chapter_text) > 3000:
+            chapter_snippet += "\n\n[... 后续内容省略，以上为章节核心部分 ...]"
+        
+        # Read existing truth files for context
+        truth_dir = book_dir / "truth"
+        current_state = read_text(truth_dir / "current_state.md") if (truth_dir / "current_state.md").exists() else ""
+        resource_ledger = read_text(truth_dir / "resource_ledger.md") if (truth_dir / "resource_ledger.md").exists() else ""
+        particle_ledger = read_text(truth_dir / "particle_ledger.md") if (truth_dir / "particle_ledger.md").exists() else ""
+        pending_hooks = read_text(truth_dir / "pending_hooks.md") if (truth_dir / "pending_hooks.md").exists() else ""
+        
+        # Read premise for context
+        premise = read_text(book_dir / "director" / "premise.md") if (book_dir / "director" / "premise.md").exists() else ""
+        premise_snippet = premise[:500] if premise else ""
+        
+        prompt = f"""你是一部网文写作系统的状态追踪模块。分析以下章节内容，提取需要记录到系统状态文件中的结构化变化。
+
+## 书名与设定
+{premise_snippet}
+
+## 当前状态
+{current_state[:500] if current_state else "（首次记录）"}
+
+## 当前资源账本
+{resource_ledger[:500] if resource_ledger else "（空）"}
+
+## 当前粒子/伏笔记录
+{particle_ledger[:300] if particle_ledger else "（空）"}
+
+## 当前待回收钩子
+{pending_hooks[:300] if pending_hooks else "（空）"}
+
+## 章节{chapter} 正文
+{chapter_snippet}
+
+---
+
+请仔细阅读章节内容，输出 JSON 格式（仅 JSON，不要其他文字）：
+{{
+  "state_changes": [
+    // 角色状态变化，每条格式: "角色名: 变化描述"
+  ],
+  "resource_changes": [
+    // 资源变化，每条格式: "资源名: 获得|消耗|变化 +数量 - 来源/用途"
+    // 例: "黑铁矿: +2单位 - 从西北矿脉开采"
+    // 例: "菌丝孢子: -3单位 - 用于暗晶涂料制作"
+  ],
+  "particles": [
+    // 粒子/伏笔推进，每条格式: "伏笔名: 推进描述"
+    // 粒子是贯穿多章的长期伏笔线索
+  ],
+  "hooks": [
+    // 钩子 新建|推进|回收，每条格式: "钩子描述 - 新建|推进|回收"
+    // 钩子是章末的悬念或下一章的引子
+  ]
+}}
+
+注意：
+- 只记录本章新发生的变化，不重复已有状态
+- 每条必须基于正文具体内容，不能凭空编造
+- 如果没有某项变化，返回空数组 []
+- 资源变化要量化（正负号 + 数量）
+- 钩子区分：新建(首次出现)、推进(之前已有继续发展)、回收(本章解决了)"""
+        
+        response = call_llm(prompt, timeout=60, max_tokens=1500, temperature=0.3)
+        if not response:
+            return {"state_changes": [], "resource_changes": [], "particles": [], "hooks": []}
+        
+        # Parse JSON from response (may be wrapped in ```json blocks)
+        resp = response.strip()
+        if "```json" in resp:
+            resp = resp.split("```json", 1)[1].split("```", 1)[0].strip()
+        elif "```" in resp:
+            resp = resp.split("```", 1)[1].split("```", 1)[0].strip()
+        
+        data = json.loads(resp)
+        return {
+            "state_changes": [s.strip() for s in data.get("state_changes", []) if s.strip()],
+            "resource_changes": [s.strip() for s in data.get("resource_changes", []) if s.strip()],
+            "particles": [s.strip() for s in data.get("particles", []) if s.strip()],
+            "hooks": [s.strip() for s in data.get("hooks", []) if s.strip()],
+        }
+    except Exception:
+        # LLM call failed or JSON parse error — return empty, non-fatal
+        return {"state_changes": [], "resource_changes": [], "particles": [], "hooks": []}
+
+
+def _generate_next_outline(book_dir: Path, current_ch: int, next_ch: int) -> dict:
+    """Generate outline for chapter N+1 based on the just-written chapter N.
+    Uses LLM to create a single detailed outline row and appends it to chapter_queue."""
+    try:
+        premise = read_text(book_dir / "director" / "premise.md")
+        vm_text = ""
+        for p in [book_dir / "director" / "volume_map.md",
+                  book_dir / "story" / "outline" / "volume_map.md"]:
+            if p.exists():
+                vm_text = read_text(p)
+                break
+
+        # Get the just-written chapter content for context
+        ch_file = _find_chapter_file(book_dir, str(current_ch))
+        ch_text = ""
+        if ch_file:
+            ch_text = read_text(Path(ch_file))[:800]
+
+        # Get previous outlines for continuity
+        qp = book_dir / "director" / "chapter_queue.md"
+        queue = parse_chapter_queue(qp) if qp.exists() else []
+        prev_outlines = []
+        for c in queue:
+            if c["chapter"] < next_ch:
+                goal = (c.get("goal") or "").strip()
+                if len(goal) > 30:
+                    prev_outlines.append(f"Ch{c['chapter']:04d}: {goal[:100]}")
+        prev_ctx = "\n".join(prev_outlines[-4:])
+
+        prompt = f"""你是网文大纲专家。为《领地战争：每日一格》生成第{next_ch}章细纲。
+
+## Premise
+{premise[:1200]}
+
+## 卷纲
+{vm_text[:1200]}
+
+## 刚刚写完的第{current_ch}章正文开头
+{ch_text[:600]}
+
+## 前文细纲
+{prev_ctx}
+
+## 格式要求
+输出一行表格（不要换行，不要解释）：
+| {next_ch:04d} | 章名 | ①步骤1(30-60字) ②步骤2(30-60字) ③步骤3(30-60字) ④步骤4(30-60字) ⑤步骤5(30-60字) ⑥步骤6(30-60字) | MustHit(一句话说明本章必须兑现的命题元素和爽点) |
+
+要求：Goal必须包含6个具体情节步骤编号①-⑥，每步30-60字。必须命中premise核心概念(侦察/信息差/策略制胜)。每章末尾设钩子联通下一章。所有内容写在一行内。不要使用|字符。直接输出表格行。"""
+
+        response = call_llm(prompt, model="", max_tokens=2000, timeout=120)
+        if not response or len(response) < 30:
+            return {"success": False, "output": "LLM 无响应"}
+
+        # Parse the response (tolerate | inside goal/pmh cells)
+        for line in response.split("\n"):
+            s = line.strip()
+            if not s.startswith("|") or "---" in s:
+                continue
+            cells = [c.strip() for c in s.strip("|").split("|")]
+            if len(cells) < 3:
+                continue
+            try:
+                cn = int(re.sub(r"\D", "", cells[0]))
+            except ValueError:
+                continue
+            if cn != next_ch:
+                continue
+
+            title = cells[1] if len(cells) > 1 else f"第{next_ch:03d}章"
+            rest = " | ".join(cells[2:])
+            goal = rest; pmh = ""
+            for sep in ["| MustHit:", "| MustHit", "MustHit:", "MustHit "]:
+                if sep in rest:
+                    parts = rest.split(sep, 1)
+                    goal = parts[0].strip()
+                    pmh = parts[1].strip() if len(parts) > 1 else ""
+                    break
+
+            if len(goal) < 30:
+                continue
+
+            # Append to chapter_queue.md
+            new_row = f"\n| {next_ch:04d} | {title} | {goal} | {pmh} | 5 | 3500 |  | 待写 |"
+            if qp.exists():
+                existing = read_text(qp)
+                write_text(qp, existing.rstrip("\n") + new_row)
+            else:
+                write_text(qp, f"# Chapter Queue\n\n| Ch | Title Hint | Goal | Premise Must Hit | Scenes | Words | Forbidden | Status |\n|---:|------|------|------------------|--------|-------|-----------|--------|{new_row}")
+
+            return {"success": True, "output": f"Ch{next_ch}: {title}"}
+
+        return {"success": False, "output": f"无法解析 LLM 响应: {response[:100]}"}
+    except Exception as e:
+        return {"success": False, "output": str(e)}
+
+
 def _do_write_flow(book_dir: Path, chapter: int) -> dict:
     """Execute the full write flow: build -> write -> review -> writeback -> check queue -> extend."""
     step_results: list[dict] = []
@@ -457,11 +662,23 @@ def _do_write_flow(book_dir: Path, chapter: int) -> dict:
                 "queue_remaining": -1, "queue_extended": False,
                 "error": "审查失败: " + result.get("error", result.get("output", "未知错误"))}
 
-    # Step d: post writeback (always PASS for auto flow)
-    result = _spawn_script(
-        [python, str(scripts / "post_writeback.py"), book,
-         "--chapter", ch_str, "--audit", "PASS", "--summary", "", "--write", "--json"],
-        timeout=120)
+    # Step d0: extract truth changes from chapter using LLM
+    truth = _extract_truth_changes(book_dir, chapter)
+    _add_step("extract_truth", {"success": True, "output": 
+        f"state: {len(truth['state_changes'])} | resources: {len(truth['resource_changes'])} | particles: {len(truth['particles'])} | hooks: {len(truth['hooks'])}"})
+
+    # Step d: post writeback with extracted truth data
+    wb_cmd = [python, str(scripts / "post_writeback.py"), book,
+              "--chapter", ch_str, "--audit", "PASS", "--summary", "", "--write", "--json"]
+    for sc in truth["state_changes"]:
+        wb_cmd.extend(["--state-change", sc])
+    for rc in truth["resource_changes"]:
+        wb_cmd.extend(["--resource-change", rc])
+    for p in truth["particles"]:
+        wb_cmd.extend(["--particle", p])
+    for h in truth["hooks"]:
+        wb_cmd.extend(["--hook", h])
+    result = _spawn_script(wb_cmd, timeout=120)
     _add_step("writeback", result)
 
     # Step e: check queue remaining (count chapters with status "待写")
@@ -476,15 +693,27 @@ def _do_write_flow(book_dir: Path, chapter: int) -> dict:
                {s.upper().replace(" ", "_") for s in pending_statuses}
         )
 
-    # Step f: extend outline if < 5 chapters remaining
+    # Step f: always generate outline for next chapter (N+1)
+    next_ch = chapter + 1
     queue_extended = False
-    if queue_remaining < 5:
-        ext_result = _spawn_script(
-            [python, str(scripts / "generate_outline_queue.py"), book,
-             "--chapters", "5", "--llm"],
-            timeout=180)
-        _add_step("extend_outline", ext_result)
+    next_missing = True
+    if queue_path.exists():
+        queue = parse_chapter_queue(queue_path)
+        for c in queue:
+            if c["chapter"] == next_ch:
+                goal = (c.get("goal") or "").strip()
+                pmh = (c.get("premise_must_hit") or "").strip()
+                # Check if it's a real outline (not placeholder)
+                if len(goal) > 30 and ("①" in goal or "1" in goal[:5]):
+                    next_missing = False
+                break
+    if next_missing:
+        ext_result = _generate_next_outline(book_dir, chapter, next_ch)
+        _add_step("extend_outline", {"success": ext_result.get("success", False),
+                     "output": ext_result.get("output", "")[:200]})
         queue_extended = ext_result.get("success", False)
+    else:
+        _add_step("extend_outline", {"success": True, "output": f"Ch{next_ch} 细纲已存在，跳过"})
 
     return {
         "success": True,
@@ -1173,6 +1402,38 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 }
                 if action in action_map:
                     self._serve_json(_spawn_script(action_map[action]))
+                elif action.startswith("repair_"):
+                    ch_str = action.replace("repair_", "")
+                    result = _spawn_script(
+                        [sys.executable, str(SCRIPTS_DIR / "repair_plan.py"), str(target),
+                         "--chapter", ch_str], timeout=120)
+                    self._serve_json(result)
+                elif action.startswith("backfill_truth_"):
+                    ch_str = action.replace("backfill_truth_", "")
+                    try:
+                        ch_num = int(ch_str)
+                        truth = _extract_truth_changes(target, ch_num)
+                        wb_cmd = [sys.executable, str(SCRIPTS_DIR / "post_writeback.py"), str(target),
+                                  "--chapter", ch_str, "--audit", "PASS",
+                                  "--summary", "LLM 回溯提取的章节变化数据", "--write", "--json"]
+                        for sc in truth.get("state_changes", []):
+                            wb_cmd.extend(["--state-change", sc])
+                        for rc in truth.get("resource_changes", []):
+                            wb_cmd.extend(["--resource-change", rc])
+                        for p in truth.get("particles", []):
+                            wb_cmd.extend(["--particle", p])
+                        for h in truth.get("hooks", []):
+                            wb_cmd.extend(["--hook", h])
+                        result = _spawn_script(wb_cmd, timeout=120)
+                        result["extracted"] = {
+                            "state_changes": len(truth.get("state_changes", [])),
+                            "resource_changes": len(truth.get("resource_changes", [])),
+                            "particles": len(truth.get("particles", [])),
+                            "hooks": len(truth.get("hooks", []))
+                        }
+                        self._serve_json(result)
+                    except ValueError:
+                        self._serve_json({"success": False, "error": f"backfill_truth: 无效章节号 {ch_str}"})
                 elif action.startswith("review_parallel_"):
                     vol_str = action.replace("review_parallel_", "")
                     result = _run_parallel_review(target, vol_str)

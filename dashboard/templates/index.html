@@ -359,6 +359,7 @@ textarea.field-edit:focus{outline:none;border-color:var(--amber)}
         <button class="btn" onclick="showL2Review()">📋 L2审查</button>
         <button class="btn" onclick="showL3Review()">🔬 L3卷末审查</button>
         <button class="btn" onclick="batchRepairWarnings()" style="color:var(--warn)">🔧 批量修复</button>
+        <button class="btn" onclick="batchBackfillTruth()" style="color:var(--amber)">📥 补充提取</button>
       </div></div></div>
     </div>
   </div>
@@ -584,35 +585,6 @@ textarea.field-edit:focus{outline:none;border-color:var(--amber)}
 <!-- ═══════════════ WRITING DESK ═══════════════ -->
 <div class="view-section" id="view-writing">
   <div class="batch-panel">
-    <!-- Volume selector -->
-    <div class="batch-card">
-      <div class="bc-header">📌 选择目标卷</div>
-      <div class="bc-body">
-        <div class="batch-row">
-          <span class="batch-label">卷:</span>
-          <select id="wf-vol-selector" onchange="wfUpdateVolStats()" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;font-family:inherit;flex:1">
-            <option value="0">-- 选择卷 --</option>
-          </select>
-        </div>
-        <div style="font-size:10px;color:var(--t3);margin-top:8px" id="wf-vol-stats">请选择卷查看统计</div>
-      </div>
-    </div>
-
-    <!-- Batch generate outline -->
-    <div class="batch-card">
-      <div class="bc-header">📋 批量生成细纲</div>
-      <div class="bc-body">
-        <div class="batch-row">
-          <span class="batch-label">生成</span>
-          <input type="number" id="wf-gen-count" value="10" min="1" max="60">
-          <span class="batch-label">章细纲</span>
-          <button class="btn primary" onclick="wfBatchGenerate()">📋 生成细纲</button>
-        </div>
-        <div style="font-size:10px;color:var(--t3);margin-top:4px">从 chapter_queue 末尾追加新条目（不会覆盖已有章节）</div>
-        <div class="step-out" id="wf-gen-out"></div>
-      </div>
-    </div>
-
     <!-- Continuous write -->
     <div class="batch-card">
       <div class="bc-header">✍️ 连续写章</div>
@@ -625,28 +597,12 @@ textarea.field-edit:focus{outline:none;border-color:var(--amber)}
           <span class="batch-label">章</span>
           <button class="btn primary" onclick="wfBatchWrite()">✍️ 开始连续写章</button>
         </div>
-        <div style="font-size:10px;color:var(--t3);margin-top:4px">每章执行 build→write→review→writeback，队列不足5章时自动补细纲</div>
+        <div style="font-size:10px;color:var(--t3);margin-top:4px">自动流程：写第N章 → 审查 → 回写 → 生成第N+1章细纲。无需手动维护细纲队列。</div>
         <div class="batch-progress" id="wf-batch-progress" style="display:none;margin-top:12px"></div>
       </div>
     </div>
 
-    <!-- Single-chapter debug (collapsed) -->
-    <div class="batch-card">
-      <div class="bc-header collapse-header" onclick="this.parentElement.querySelector('.bc-body').style.display=this.parentElement.querySelector('.bc-body').style.display==='none'?'':'none';this.classList.toggle('open')">
-        <span class="collapse-arrow">▶</span>
-        <span>🔧 单章调试 (展开)</span>
-      </div>
-      <div class="bc-body" style="display:none">
-        <div class="wf-steps">
-          <div class="wf-step"><span class="step-num">1</span><span class="step-label">选择章节</span><select id="wf-chapter" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;margin:4px 0 0 30px"><option value="">-- 选择章节 --</option></select></div>
-          <div class="wf-step"><span class="step-num">2</span><span class="step-label">生成任务包</span><button class="btn primary" onclick="wfBuild()" style="margin-left:30px">📦 生成任务包</button><div class="step-out" id="wf-build-out"></div></div>
-          <div class="wf-step"><span class="step-num">3</span><span class="step-label">写章节</span><button class="btn primary" onclick="wfWrite()" style="margin-left:30px">✍️ 开始写作</button><div class="step-out" id="wf-write-out"></div></div>
-          <div class="wf-step"><span class="step-num">4</span><span class="step-label">审查章节</span><button class="btn primary" onclick="wfReview()" style="margin-left:30px">🔍 开始审查</button><div class="step-out" id="wf-review-out"></div></div>
-          <div class="wf-step"><span class="step-num">5</span><span class="step-label">写后回写</span><div style="margin-left:30px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select id="wf-audit" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px"><option value="PASS">PASS</option><option value="WARN">WARN</option><option value="FAIL">FAIL</option></select><input id="wf-summary" placeholder="审查摘要" style="flex:1;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px"><button class="btn primary" onclick="wfWriteback()">📝 提交回写</button></div><div class="step-out" id="wf-wb-out"></div></div>
-        </div>
-        <div class="card" style="margin-top:14px"><div class="card-h"><h2>当前章节信息</h2></div><div class="card-b" id="wf-chapter-info"><span style="color:var(--t3)">请先选择章节</span></div></div>
-      </div>
-    </div>
+
   </div>
 </div>
 <!-- ═══════════════ P3: 状态管理 ═══════════════ -->
@@ -720,7 +676,7 @@ const STATE={},A={book:'',books:[],currentView:'overview',currentVolume:0,editin
 function B(){return A.book?'?book='+encodeURIComponent(A.book):''}
 async function loadBooks(){try{const r=await fetch('/api/books');A.books=await r.json();const s=document.getElementById('book-selector');if(A.books.length>=1){s.className=A.books.length>1?'show':'';s.innerHTML=A.books.map(b=>`<option value="${b.key}">${esc(b.title)}</option>`).join('');const saved=localStorage.getItem('wd-book');if(A.books.length>1&&saved&&A.books.find(b=>b.key===saved))A.book=saved;else A.book=A.books[0].key;s.value=A.book}}catch(e){console.error(e)}}
 function switchBook(){A.book=document.getElementById('book-selector').value;localStorage.setItem('wd-book',A.book);refresh()}
-async function refresh(){try{const r=await fetch('/api/state'+B());const s=await r.json();if(s.error)return;Object.assign(STATE,s);if(A.currentView==='overview')renderOverview(s);if(A.currentView==='writing')populateChapterSelect(s)}catch(e){console.error(e)}}
+async function refresh(){try{const r=await fetch('/api/state'+B());const s=await r.json();if(s.error)return;Object.assign(STATE,s);if(A.currentView==='overview')renderOverview(s)}catch(e){console.error(e)}}
 
 /* ── Theme ── */
 (function(){const t=localStorage.getItem('wd-theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
@@ -734,7 +690,7 @@ function switchView(v){
   if(v==='overview'){refresh();startAutoRefresh()}
   else stopAutoRefresh();
   if(v==='outline')loadOutlineFiles();
-  if(v==='writing')wfPopulateVolumes();
+  if(v==='writing'){const nextCh=STATE.chapters?STATE.chapters.filter(c=>!c.words||c.words===0)[0]:null;if(nextCh)document.getElementById('wf-start-ch').value=nextCh.chapter}
   if(v==='setup')resetPath();
   if(v==='truth')initTruthTab();
 }
@@ -847,7 +803,7 @@ function renderOverview(s){
   if((s.blockers||[]).length>0){bl.innerHTML=s.blockers.map(b=>`<div class="blocker-item">⚠ ${esc(b)}</div>`).join('')}else{bl.innerHTML='<span style="color:var(--pass);font-size:11px">✅ 无阻塞项</span>'}
   document.getElementById('blockers-card').style.display=((s.blockers||[]).length===0&&s.can_write)?'none':'';
   const tbody=document.getElementById('chapter-tbody'),vl={PASS:'通过',WARN:'警告',FAIL:'失败'};
-  const displayTitle=c=>{const t=c.title_hint||c.title||'';if(t)return t;return'第'+String(c.chapter).padStart(3,'0')+'章'};tbody.innerHTML=chapters.slice(0,50).map(c=>{const n=ns(c.status),cls=n==='pass'?'pass':n==='warn'?'warn':n==='fail'?'fail':'queue';const title=displayTitle(c),w=c.words||0,rv=c.review_verdict||'',goal=c.goal||'',premise=c.premise_must_hit||'',mtime=c.mtime||'';const shortGoal=goal.length>30?goal.substring(0,28)+'…':goal;const shortPremise=premise.length>30?premise.substring(0,28)+'…':premise;const writeBtn=n==='queue'?`<button class="btn btn-sm primary" onclick="event.stopPropagation();writeFlowChapter(${c.chapter})" title="一键写章" style="padding:2px 5px;font-size:10px">写</button>`:'';return`<tr class="ch-row" onclick="showDetail(${c.chapter})"><td style="font-weight:700;color:var(--amber);width:32px">${c.chapter}</td><td style="width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(title)}">${esc(title)}</td><td style="width:40px;font-size:11px;color:${w>0?'var(--t2)':'var(--t3)'}">${w>0?w:'-'}</td><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${esc(goal)}">${esc(shortGoal)||'<span style="color:var(--t3)">-</span>'}</td><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${esc(premise)}">${esc(shortPremise)||'<span style="color:var(--t3)">-</span>'}</td><td style="width:44px;font-weight:600;font-size:11px"><span class="${rv==='PASS'?'v-pass':rv==='WARN'?'v-warn':rv==='FAIL'?'v-fail':''}">${rv?vl[rv]||rv:'-'}</span></td><td style="width:74px;font-size:10px;color:var(--t3);white-space:nowrap">${mtime||'-'}</td><td style="width:48px"><span class="status-badge ${cls}">${sl(c.status)}</span></td><td style="width:32px">${writeBtn}</td><td style="width:32px"><button class="btn btn-sm" onclick="event.stopPropagation();doAction('review_ch_'+${c.chapter})" title="审查" style="padding:2px 4px;font-size:9px">审</button></td></tr>`}).join('');
+  const displayTitle=c=>{const t=c.title_hint||c.title||'';if(t)return t;return'第'+String(c.chapter).padStart(3,'0')+'章'};tbody.innerHTML=chapters.slice(0,200).map(c=>{const n=ns(c.status),cls=n==='pass'?'pass':n==='warn'?'warn':n==='fail'?'fail':'queue';const title=displayTitle(c),w=c.words||0,rv=c.review_verdict||'',goal=c.goal||'',premise=c.premise_must_hit||'',mtime=c.mtime||'';const shortGoal=goal.length>30?goal.substring(0,28)+'…':goal;const shortPremise=premise.length>30?premise.substring(0,28)+'…':premise;const writeBtn=n==='queue'?`<button class="btn btn-sm primary" onclick="event.stopPropagation();writeFlowChapter(${c.chapter})" title="一键写章" style="padding:2px 5px;font-size:10px">写</button>`:'';const backfillBtn=c.words>0?`<button class="btn btn-sm" onclick="event.stopPropagation();backfillTruth(${c.chapter})" title="LLM提取truth数据" style="padding:2px 4px;font-size:9px;color:var(--amber)">📥</button>`:'';return`<tr class="ch-row" onclick="showDetail(${c.chapter})"><td style="font-weight:700;color:var(--amber);width:32px">${c.chapter}</td><td style="width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(title)}">${esc(title)}</td><td style="width:40px;font-size:11px;color:${w>0?'var(--t2)':'var(--t3)'}">${w>0?w:'-'}</td><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${esc(goal)}">${esc(shortGoal)||'<span style="color:var(--t3)">-</span>'}</td><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${esc(premise)}">${esc(shortPremise)||'<span style="color:var(--t3)">-</span>'}</td><td style="width:44px;font-weight:600;font-size:11px"><span class="${rv==='PASS'?'v-pass':rv==='WARN'?'v-warn':rv==='FAIL'?'v-fail':''}">${rv?vl[rv]||rv:'-'}</span></td><td style="width:74px;font-size:10px;color:var(--t3);white-space:nowrap">${mtime||'-'}</td><td style="width:48px"><span class="status-badge ${cls}">${sl(c.status)}</span></td><td style="width:32px">${writeBtn}${backfillBtn}</td><td style="width:32px"><button class="btn btn-sm" onclick="event.stopPropagation();doAction('review_ch_'+${c.chapter})" title="审查" style="padding:2px 4px;font-size:9px">审</button></td></tr>`}).join('');
   if(chapters.length===0)tbody.innerHTML='<tr><td colspan="10"><div style="text-align:center;padding:40px;color:var(--t3)">暂无章节数据</div></td></tr>';
 }
 function renderGateFlow(s){
@@ -1431,46 +1387,6 @@ async function saveFile(relPath,editorId){}
 function renderOutlineQueue(){}
 
 /* ── Writing Desk (Batch) ── */
-function populateChapterSelect(s){
-  if(!s||!s.chapters)return;
-  const sel=document.getElementById('wf-chapter');
-  const ok=s.chapters.filter(c=>{const n=ns(c.status);return n==='pass'||n==='written'||c.goal});
-  sel.innerHTML='<option value="">-- Select --</option>'+ok.map(c=>'<option value="'+c.chapter+'">Ch'+c.chapter+' '+(c.title_hint||c.title||'')+' ['+sl(c.status)+']</option>').join('');
-  sel.onchange=function(){const ch=parseInt(this.value)||0;const cd=s.chapters.find(c=>c.chapter===ch);
-    const info=document.getElementById('wf-chapter-info');
-    info.innerHTML=cd?'<div style="font-size:13px;font-weight:600">Ch'+cd.chapter+' '+esc(cd.title_hint||cd.title||'')+'</div><div style="font-size:10px;color:var(--t3);margin-top:4px">Status: '+sl(cd.status)+' | Words: '+(cd.words||0)+' | Scenes: '+(cd.scenes||'-')+'</div><div style="font-size:11px;color:var(--t2);margin-top:6px">Goal: '+esc(cd.goal||'-')+'</div><div style="font-size:11px;color:var(--t2)">Premise: '+esc(cd.premise_must_hit||'-')+'</div>':'<span style="color:var(--t3)">Select a chapter</span>'
-  }
-}
-// Populate volume selector on writing desk
-function wfUpdateVolStats(){
-  const volNum=parseInt(document.getElementById('wf-vol-selector').value)||0;
-  const s=STATE;
-  if(!volNum||!(s.volumes||[]).length){document.getElementById('wf-vol-stats').textContent='Please select a volume';return}
-  const vol=s.volumes.find(v=>v.volume===volNum||v.start===volNum);
-  if(!vol){document.getElementById('wf-vol-stats').textContent='Volume data not found';return}
-  const vChs=(s.chapters||[]).filter(c=>c.chapter>=vol.start&&c.chapter<=vol.end);
-  const written=vChs.filter(c=>c.words>0).length;
-  const pending=vChs.filter(c=>!c.words||c.words===0).length;
-  document.getElementById('wf-vol-stats').innerHTML='Vol '+vol.volume+': '+esc(vol.theme)+' | Ch'+vol.start+'-'+vol.end+' | Written: '+written+' | Pending: '+pending;
-  document.getElementById('wf-start-ch').value=written>0?(written+vol.start):vol.start;
-}
-// Populate volume selector on tab switch
-function wfPopulateVolumes(){
-  const sel=document.getElementById('wf-vol-selector');
-  const vols=STATE.volumes||[];
-  sel.innerHTML='<option value="0">-- Select Volume --</option>'+vols.map(v=>'<option value="'+v.start+'">Vol '+v.volume+': '+esc(v.theme)+' (Ch'+v.start+'-'+v.end+')</option>').join('');
-  if(vols.length>0){sel.value=vols[0].start;wfUpdateVolStats()}
-}
-async function wfBatchGenerate(){
-  const count=parseInt(document.getElementById('wf-gen-count').value)||10;
-  const out=document.getElementById('wf-gen-out');out.classList.add('show');out.textContent='Generating '+count+' chapter outlines...';
-  try{
-    const r=await fetch('/api/action/generate_queue_'+count+'_0'+B());
-    const d=await r.json();
-    out.textContent=d.output||d.error||'Done';
-    setTimeout(refresh,1500);
-  }catch(e){out.textContent='Error: '+e.message}
-}
 async function wfBatchWrite(){
   const start=parseInt(document.getElementById('wf-start-ch').value)||0;
   const count=parseInt(document.getElementById('wf-write-count').value)||1;
@@ -1507,12 +1423,6 @@ async function wfBatchWrite(){
     }
   }catch(e){progress.textContent='Error: '+e.message}
 }
-// Single-chapter debug functions (unchanged, used by collapsed panel)
-function wfChapter(){return document.getElementById('wf-chapter').value}
-async function wfBuild(){const ch=wfChapter();if(!ch)return alert('Select a chapter first');const out=document.getElementById('wf-build-out');out.classList.add('show');out.textContent='Building...';try{const r=await fetch('/api/action/build_ch_'+ch+B());const d=await r.json();out.textContent=d.output||d.error||'Done'}catch(e){out.textContent='Error: '+e.message}}
-async function wfWrite(){const ch=wfChapter();if(!ch)return alert('Select a chapter first');const out=document.getElementById('wf-write-out');out.classList.add('show');out.textContent='Writing (may take a while)...';try{const r=await fetch('/api/write_chapter'+B()+(B()?'&':'?')+'chapter='+ch,{method:'POST'});const d=await r.json();out.textContent=d.output||d.error||'Done'}catch(e){out.textContent='Error: '+e.message}}
-async function wfReview(){const ch=wfChapter();if(!ch)return alert('Select a chapter first');const out=document.getElementById('wf-review-out');out.classList.add('show');out.textContent='Reviewing...';try{const r=await fetch('/api/action/review_ch_'+ch+B());const d=await r.json();out.textContent=d.output||d.error||'Done'}catch(e){out.textContent='Error: '+e.message}}
-async function wfWriteback(){const ch=wfChapter();if(!ch)return alert('Select a chapter first');const audit=document.getElementById('wf-audit').value,summary=document.getElementById('wf-summary').value;const out=document.getElementById('wf-wb-out');out.classList.add('show');out.textContent='Writing back...';try{const r=await fetch('/api/post_writeback'+B()+(B()?'&':'?')+'chapter='+ch,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chapter:parseInt(ch),audit,summary})});const d=await r.json();out.textContent=d.output||d.error||'Done';if(d.success)setTimeout(refresh,2000)}catch(e){out.textContent='Error: '+e.message}}
 
 /* ── Write Flow (一键写章) ── */
 async function writeFlowChapter(chapter){
@@ -1636,6 +1546,41 @@ function initTruthTab(){
     const first=TRUTH_FILE_GROUPS[0].files[0];
     if(first)selectTruthFile(first.path);
   }
+}
+
+/* ── Truth Backfill ── */
+async function backfillTruth(chapter){
+  if(!confirm('将对第'+chapter+'章运行LLM提取truth数据（不重写正文）。确认？'))return;
+  const output=document.getElementById('output-body'),drawer=document.getElementById('output-drawer');
+  drawer.classList.add('open');output.textContent='📥 正在提取第'+chapter+'章的truth数据...';
+  try{
+    const r=await fetch('/api/action/backfill_truth_'+chapter+'?'+B());
+    const d=await r.json();
+    if(d.success){
+      const ex=d.extracted||{};
+      output.textContent='✅ 第'+chapter+'章提取完成!\n状态变化:'+(ex.state_changes||0)+' | 资源:'+(ex.resource_changes||0)+' | 粒子:'+(ex.particles||0)+' | 钩子:'+(ex.hooks||0);
+      setTimeout(refresh,1500);
+    }else{output.textContent='❌ 提取失败: '+(d.error||'未知错误')}
+  }catch(e){output.textContent='❌ 网络错误: '+e.message}
+}
+async function batchBackfillTruth(){
+  const written=(STATE.chapters||[]).filter(c=>c.words>0);
+  if(!written.length){openOutput('No written chapters to backfill');return}
+  if(!confirm('将对全部已写章('+written.length+'章)运行LLM提取truth数据。可能需要较长时间。确认？'))return;
+  const output=document.getElementById('output-body'),drawer=document.getElementById('output-drawer');
+  drawer.classList.add('open');output.textContent='📥 批量提取 '+written.length+' 章...';
+  let done=0;
+  for(const c of written){
+    try{
+      const r=await fetch('/api/action/backfill_truth_'+c.chapter+'?'+B());
+      const d=await r.json();
+      done++;
+      output.textContent+='\n['+done+'/'+written.length+'] 第'+c.chapter+'章: '+(d.success?'✅ '+((d.extracted||{}).hooks||0)+' 条':'❌ '+(d.error||''));
+    }catch(e){done++;output.textContent+='\n['+done+'/'+written.length+'] 第'+c.chapter+'章: ❌ '+e.message}
+    if(done%5===0)await new Promise(r=>setTimeout(r,3000));
+  }
+  output.textContent+='\n\n✅ 批量提取完成! ';
+  setTimeout(refresh,1500);
 }
 
 /* ── Auto-refresh ── */

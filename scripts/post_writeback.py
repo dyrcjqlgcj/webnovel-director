@@ -15,6 +15,7 @@ import sys
 _skill_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_skill_root))
 from lib.common import read_text, write_text, strip_json5
+from scripts.generate_outline_queue import _shift_volumes, _get_written_chapters
 import argparse, datetime, json, re
 
 VALID_AUDITS = {"PASS", "WARN", "FAIL"}
@@ -135,6 +136,36 @@ def upsert_table_rows(text: str, chapter: int, new_rows: list) -> str:
     result.extend(new_rows)
     return chr(10).join(result) + chr(10)
 
+def _check_volume_shift(book: Path, chapter: int) -> None:
+    """Check if written chapters overflow planned volume boundaries.
+
+    Uses explicit table ranges from volume_map (e.g. | 一 | 1-60 |).
+    Only shifts if chapters push past the LAST planned volume boundary.
+    Does NOT expand the current volume — overflow chapters belong to the next volume."""
+    from lib.common import parse_volume_map
+
+    vm_path = book / "director" / "volume_map.md"
+    if not vm_path.exists():
+        return
+
+    table_vols = parse_volume_map(vm_path)
+    if not table_vols:
+        return
+
+    written = _get_written_chapters(book)
+    if not written:
+        return
+    max_written = max(written)
+
+    last_vol_end = table_vols[-1]["end"]
+    if max_written <= last_vol_end:
+        return  # No overflow — chapters fit within planned volumes
+
+    overflow = max_written - last_vol_end
+    _shift_volumes(book_path=book, old_last=last_vol_end, new_last=max_written)
+    print(f"  [卷边界] 总溢出 {overflow} 章 (Ch{max_written} > 计划末Ch{last_vol_end})，自动平移卷纲")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("book_dir")
@@ -227,6 +258,11 @@ def main() -> int:
         if hook_rows:
             write_text(book/"truth/pending_hooks.md", upsert_table_rows(read_text(book/"truth/pending_hooks.md"), args.chapter, hook_rows))
     result = {"status":"PASS", "audit":args.audit, "chapter":args.chapter, "write":args.write, "queueChanged":q_changed, "nextStep":next_step, "blockers":blockers}
+    
+    # Auto-shift volume boundaries if written chapters exceed planned boundary
+    if args.write and args.audit == "PASS":
+        _check_volume_shift(book, args.chapter)
+    
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:

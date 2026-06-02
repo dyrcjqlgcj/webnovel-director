@@ -103,6 +103,87 @@ def generate_chapter_entry(ch_num: int, vol_name: str, concepts: dict,
     }
 
 
+def _get_volume_section(vm_text: str, vol_label: str) -> str:
+    """Extract the detailed section for a specific volume from volume_map.md."""
+    pattern = rf'^## 第{vol_label}卷'
+    sections = []
+    in_section = False
+    for line in vm_text.split('\n'):
+        if re.match(pattern, line):
+            in_section = True
+            sections = [line]
+            continue
+        if in_section:
+            if re.match(r'^## ', line) and not re.match(pattern, line):
+                break
+            sections.append(line)
+    return '\n'.join(sections) if sections else ''
+
+
+def _batch_by_volume(start_ch: int, count: int, volumes: list, book_path: Path = None) -> list:
+    """Split chapter range into per-volume batches.
+    
+    Rule: always split by CURRENT volume boundaries. At boundaries,
+    pass BOTH volumes' context so the LLM can decide if the arc transitioned.
+    """
+    cum = 0
+    for v in volumes:
+        v['_start'] = cum + 1
+        v['_end'] = cum + v['chapters']
+        cum = v['_end']
+    
+    batches = []
+    end_ch = start_ch + count - 1
+    ch = start_ch
+    while ch <= end_ch:
+        vol = None
+        vol_idx = -1
+        for i, v in enumerate(volumes):
+            if v['_start'] <= ch <= v['_end']:
+                vol = v
+                vol_idx = i
+                break
+        if vol is None:
+            batches.append({'label': '', 'start': ch, 'count': end_ch - ch + 1, 'theme': ''})
+            break
+        
+        batch_count = min(end_ch - ch + 1, vol['_end'] - ch + 1)
+        batch = {'label': vol['num'], 'start': ch, 'count': batch_count, 'theme': vol.get('name', '')}
+        
+        # If this is the first chapter of a new volume, flag boundary context
+        if vol_idx > 0 and ch == vol['_start']:
+            prev_vol = volumes[vol_idx - 1]
+            batch['boundary'] = True
+            batch['prev_label'] = prev_vol['num']
+            batch['prev_theme'] = prev_vol.get('name', '')
+        
+        batches.append(batch)
+        ch += batch_count
+    return batches
+
+
+def _get_written_chapters(book_path: Path) -> set:
+    """Return set of chapter numbers marked '已写' in chapter_queue.md."""
+    qp = book_path / "director" / "chapter_queue.md"
+    if not qp.exists():
+        return set()
+    text = read_text(qp)
+    written = set()
+    for line in text.split('\n'):
+        s = line.strip()
+        if s.startswith('|') and '---' not in s:
+            cells = [c.strip() for c in s.strip('|').split('|')]
+            if len(cells) >= 6:
+                n_raw = re.sub(r'\D', '', cells[0])
+                if n_raw:
+                    ch_num = int(n_raw)
+                    status_col = 7 if len(cells) >= 8 else 5
+                    status = cells[status_col] if status_col < len(cells) else ''
+                    if '已写' in status:
+                        written.add(ch_num)
+    return written
+
+
 def generate_queue(book_dir: str, num_chapters: int = 20, start_ch: int = 1, use_llm: bool = False) -> str:
     """Generate chapter_queue.md content starting from start_ch.
     
@@ -142,68 +223,135 @@ def generate_queue(book_dir: str, num_chapters: int = 20, start_ch: int = 1, use
             last_few = "最近5章的细纲：\n" + "\n".join(ch_lines[-5:])
 
     if use_llm:
-        # Generate detailed outlines via LLM
+        # Generate detailed outlines via LLM - volume-aware batching
         from lib.llm import call_llm
-        prompt = f"""你是网文大纲专家。请根据以下卷纲和上下文，为Ch{start_ch}-{start_ch+num_chapters-1}生成详细的章节细纲。
+        vol_text = read_text(vm_path) if vm_path else ""
+        batches = _batch_by_volume(start_ch, num_chapters, volumes)
+        
+        MAX_RETRIES = 2
+        all_ch_data = {}
+        for batch in batches:
+            b_start = batch['start']
+            b_count = batch['count']
+            b_end = b_start + b_count - 1
+            
+            # Build volume-specific context
+            vol_ctx = f"## 卷纲表格\n{vol_text[:2000]}"
+            if batch['label']:
+                section = _get_volume_section(vol_text, batch['label'])
+                if section:
+                    vol_ctx += f"\n\n## 当前卷详情\n{section[:1500]}"
+                    if not batch.get('boundary'):
+                        vol_ctx += f"\n\nCh{b_start}-{b_end} 属于第{batch['label']}卷「{batch['theme']}」。按此卷主题和节奏设计。"
+                if batch.get('boundary') and batch.get('prev_label'):
+                    prev_section = _get_volume_section(vol_text, batch['prev_label'])
+                    if prev_section:
+                        vol_ctx += f"\n\n## 前卷详情（上一章所属的卷）\n{prev_section[:800]}"
+            
+            # Try generating this batch, retrying if chapters are missing
+            for attempt in range(1, MAX_RETRIES + 2):
+                # Determine which chapters still need to be generated
+                pending = [ch for ch in range(b_start, b_end + 1) if ch not in all_ch_data]
+                if not pending:
+                    break
+                pending_start, pending_end = pending[0], pending[-1]
+                pending_count = pending_end - pending_start + 1
+                
+                # For retries, use smaller batches
+                if attempt > 1 and pending_count > 3:
+                    # Split into sub-batches of 2-3 chapters
+                    sub_pending = pending[:3]
+                    pending_start, pending_end = sub_pending[0], sub_pending[-1]
+                    pending_count = pending_end - pending_start + 1
+                    retry_note = f"（重试第{attempt}次，缩小批次到{pending_count}章）"
+                elif attempt > 1:
+                    retry_note = f"（重试第{attempt}次）"
+                else:
+                    retry_note = ""
+                
+                prompt = f"""你是网文大纲专家。根据以下信息为Ch{pending_start}-{pending_end}生成详细细纲。
 
-## 卷纲
-{vol_context[:3000]}
+{vol_ctx}
 
-## 已有章节上下文
+## 已有章节上下文（最近5章）
 {last_few[:2000]}
 
 ## Premise
 {premise_text[:1000]}
 
-## 格式要求
-对每一章,按以下格式输出（用Markdown表格）：
+"""
+                if batch.get('boundary') and pending_start == b_start:
+                    prompt += f"""## 卷过渡判断
+你正在生成的是第{batch['label']}卷「{batch['theme']}」的第1章。
+上一章刚写完，其内容属于第{batch['prev_label']}卷「{batch['prev_theme']}」。
 
-| 章节 | 标题 | Goal（①-⑥ 具体情节步骤） | Premise Must Hit（本章要兑现的核心主题） | Scenes | Words | Forbidden |
+请根据上一章的细纲判断:
+- 如果上一章已自然收尾前卷的弧光 → 按新卷主题生成本章
+- 如果上一章仍在推进前卷主线 → 延续前卷的调性，暂不切换
+"""
+                prompt += f"""## 格式要求
+| 章节 | 标题 | Goal（①-⑥ 具体情节步骤） | Premise Must Hit | Scenes | Words | Forbidden |
 
 要求：
 1. Goal列包含6个具体情节步骤，编号①-⑥，每步30-60字
 2. 必须命中premise的核心概念（侦察、信息差、每日一格等）
-3. 每章末尾有钩子，衔接下一章
+3. 每章末尾有钩子衔接下一章
 4. Forbidden列填写本章要避免的问题
 5. Scenes=5, Words=3500
-6. Status=待写
+6. 如果这是新卷的第一章，需要设计新卷的开幕感
+7. 所有内容写在一行内，不要在表格单元格内换行
 
-直接输出表格行，从Ch{start_ch}开始。"""
+直接输出表格行，从Ch{pending_start}开始。不要输出任何解释或前言。"""
+                
+                print(f"  [LLM] Ch{pending_start}-{pending_end} (第{batch['label']}卷「{batch['theme']}」) {retry_note}...")
+                llm_response = call_llm(prompt, model="")
+                
+                if llm_response and len(llm_response) > 100:
+                    parsed_count = 0
+                    for line in llm_response.split('\n'):
+                        s = line.strip()
+                        m = re.match(r'\|\s*(\d+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|', s)
+                        if m:
+                            ch = int(m.group(1))
+                            if ch not in all_ch_data:
+                                all_ch_data[ch] = {'title': m.group(2).strip(), 'goal': m.group(3).strip(), 'pmh': m.group(4).strip()}
+                                parsed_count += 1
+                    
+                    if parsed_count > 0:
+                        print(f"    解析到 {parsed_count} 章")
+                
+                # Check if we got everything for this batch
+                still_missing = [ch for ch in range(b_start, b_end + 1) if ch not in all_ch_data]
+                if not still_missing:
+                    break
+                if attempt > 1 and len(still_missing) <= len(pending):
+                    # Made partial progress, continue retrying remaining
+                    pass
+            
+            # Warn about any chapters still missing after all retries
+            final_missing = [ch for ch in range(b_start, b_end + 1) if ch not in all_ch_data]
+            if final_missing:
+                print(f"  [WARN] Ch{final_missing} 在 {MAX_RETRIES+1} 次尝试后仍无法生成，将使用占位符。请手动补充！")
         
-        print(f"  [LLM] 正在生成 Ch{start_ch}-{start_ch+num_chapters-1} 详细细纲 ...")
-        llm_response = call_llm(prompt, model="")
-        
-        if llm_response and len(llm_response) > 200:
-            # Parse LLM response into chapter entries
+        if all_ch_data:
+            # Build table from parsed LLM data
             lines = [
                 "# Chapter Queue",
                 "",
-                f"> LLM 生成 Ch{start_ch}-{start_ch+num_chapters-1}",
-                f"| Ch | Title Hint | Goal | Premise Must Hit | Scenes | Words | Forbidden | Status |",
+                f"> LLM 生成 Ch{start_ch}-{start_ch + num_chapters - 1}",
+                "| Ch | Title Hint | Goal | Premise Must Hit | Scenes | Words | Forbidden | Status |",
                 "|---:|------|------|------------------|--------|-------|-----------|--------|",
             ]
-            
-            ch_data = {}
-            for line in llm_response.split('\n'):
-                s = line.strip()
-                if not s.startswith('|') or '---' in s or '章节' in s or 'Title' in s or 'Goal' in s or 'Ch' in s[:5] and '---' not in s:
-                    # Try to match chapter rows
-                    m = re.match(r'\|\s*(\d+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|', s)
-                    if m:
-                        ch = int(m.group(1))
-                        title = m.group(2).strip()
-                        goal = m.group(3).strip()
-                        pmh = m.group(4).strip()
-                        ch_data[ch] = {"title": title, "goal": goal, "pmh": pmh}
-            
+            missing_count = 0
             for ch in range(start_ch, start_ch + num_chapters):
-                if ch in ch_data:
-                    d = ch_data[ch]
+                if ch in all_ch_data:
+                    d = all_ch_data[ch]
                     lines.append(f"| {ch:04d} | {d['title']} | {d['goal']} | {d['pmh']} | 5 | 3500 |  | 待写 |")
                 else:
-                    # Fallback for missing chapters
                     lines.append(f"| {ch:04d} | 第{ch:03d}章 | 待补充 | 待补充 | 5 | 3500 |  | 待写 |")
-            
+                    missing_count += 1
+            if missing_count:
+                print(f"  [WARN] 共 {missing_count} 章为占位符，需手动补充或重试")
             return "\n".join(lines)
         else:
             print("  [WARN] LLM 调用失败或无响应，回退到模板生成")
@@ -298,6 +446,121 @@ def generate_from_index(book_dir: str, start_ch: int = 1, count: int = 20) -> st
         )
 
     return "\n".join(lines)
+
+
+def _shift_volumes(book_path: Path, old_last: int, new_last: int) -> None:
+    """Shift volume boundaries when chapters overflow past the current volume end.
+    
+    If volume 1 was 1-60 and new chapters push to ch 65, this function:
+    - Updates volume 1 to 1-65
+    - Shifts all subsequent volumes by +5
+    - Ex: 卷二 61-140 becomes 66-145, 卷三 141-250 becomes 146-255, etc.
+    """
+    vm_path = book_path / "director" / "volume_map.md"
+    if not vm_path.exists():
+        return
+    
+    text = read_text(vm_path)
+    
+    # Parse the volume table
+    vol_entries = []
+    table_start = None
+    table_end = None
+    lines = text.split('\n')
+    in_table = False
+    header_sep_count = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('|') and '---' in stripped:
+            header_sep_count += 1
+            if header_sep_count == 1:
+                in_table = True
+                continue
+        if in_table and stripped.startswith('|'):
+            cells = [c.strip() for c in stripped.strip('|').split('|')]
+            if len(cells) >= 2:
+                # Parse volume number and chapter range
+                ch_range = cells[1] if len(cells) > 1 else ''
+                m = re.match(r'(\d+)\s*[-\u2013\u2014]\s*(\d+)', ch_range)
+                if m:
+                    vol_entries.append({
+                        'line_idx': i,
+                        'vol_label': cells[0].strip() if cells else '',
+                        'start': int(m.group(1)),
+                        'end': int(m.group(2)),
+                        'raw_range': m.group(0),
+                        'cells': cells
+                    })
+        elif in_table and not stripped.startswith('|'):
+            if vol_entries:
+                table_end = i
+                break
+    
+    if not vol_entries:
+        return
+    
+    # Find which volume contains old_last
+    affected_vol = None
+    for i, v in enumerate(vol_entries):
+        if v['start'] <= old_last <= v['end']:
+            affected_vol = i
+            break
+    
+    if affected_vol is None:
+        # old_last might be before the first volume or after the last
+        if old_last < vol_entries[0]['start']:
+            affected_vol = 0
+        elif old_last > vol_entries[-1]['end']:
+            affected_vol = len(vol_entries) - 1
+        else:
+            return
+    
+    v = vol_entries[affected_vol]
+    if new_last <= v['end']:
+        return  # No overflow
+    
+    overflow = new_last - v['end']
+    print(f"  [卷边界] 第{v['vol_label']}卷溢出 {overflow} 章，向后平移后续卷...")
+    
+    # Update current volume's end too
+    new_end_current = new_last
+    new_range_current = f"{v['start']}-{new_end_current}"
+    old_line = lines[v['line_idx']]
+    new_line = old_line.replace(v['raw_range'], new_range_current)
+    lines[v['line_idx']] = new_line
+    # Update current volume's detailed header
+    old_header_range = f"{v['start']}-{v['end']}"
+    new_header_range = f"{v['start']}-{new_end_current}"
+    for k in range(len(lines)):
+        if f"第{v['vol_label']}卷" in lines[k] and old_header_range in lines[k]:
+            lines[k] = lines[k].replace(old_header_range, new_header_range)
+            break
+    print(f"    第{v['vol_label']}卷: {v['start']}-{v['end']} -> {v['start']}-{new_end_current}")
+    
+    # Shift all volumes from affected_vol+1 onwards
+    for j in range(affected_vol + 1, len(vol_entries)):
+        ve = vol_entries[j]
+        new_start = ve['start'] + overflow
+        new_end = ve['end'] + overflow
+        new_range = f"{new_start}-{new_end}"
+        
+        # Update the table row
+        old_line = lines[ve['line_idx']]
+        new_line = old_line.replace(ve['raw_range'], new_range)
+        lines[ve['line_idx']] = new_line
+        
+        # Update the detailed header if it exists
+        old_header_range = f"{ve['start']}-{ve['end']}"
+        new_header_range = f"{new_start}-{new_end}"
+        for k in range(len(lines)):
+            if f"第{ve['vol_label']}卷" in lines[k] and old_header_range in lines[k]:
+                lines[k] = lines[k].replace(old_header_range, new_header_range)
+                break
+        
+        print(f"    第{ve['vol_label']}卷: {ve['start']}-{ve['end']} -> {new_start}-{new_end}")
+    
+    write_text(vm_path, '\n'.join(lines))
+    print(f"  [卷边界] 已更新 volume_map.md")
 
 
 def main() -> int:
