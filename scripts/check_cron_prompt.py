@@ -10,6 +10,10 @@ review/writeback.
 """
 from __future__ import annotations
 from pathlib import Path
+import sys
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import read_text
 import argparse, json, re
 
 REQUIRED_MENTIONS = [
@@ -26,10 +30,6 @@ WRITE_TERMS = ["写", "续写", "下一章", "正文", "生成第", "chapter", "
 BYPASS_TERMS = ["不用审", "跳过审查", "直接写", "不需要读取", "忽略premise", "忽略 director"]
 
 
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig", errors="ignore") if path.exists() else ""
-
-
 def contains_any(text: str, terms: list[str]) -> bool:
     lo = text.lower()
     return any(t.lower() in lo for t in terms)
@@ -43,7 +43,7 @@ def main() -> int:
     args = ap.parse_args()
     prompt_path = Path(args.prompt)
     target = Path(args.target)
-    prompt = read(prompt_path)
+    prompt = read_text(prompt_path)
     issues=[]
     if not prompt:
         issues.append({"severity":"FAIL", "issue":"prompt 为空或无法读取"})

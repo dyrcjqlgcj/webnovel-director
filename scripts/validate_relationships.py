@@ -12,6 +12,10 @@ Checks:
 """
 from __future__ import annotations
 from pathlib import Path
+import sys as _sys
+_skill_root = Path(__file__).resolve().parent.parent
+_sys.path.insert(0, str(_skill_root))
+from lib.common import read_text
 import argparse, json, re, sys
 
 try:
@@ -20,10 +24,6 @@ except ImportError:
     yaml = None
 
 REQUIRED_EDGE = ["source", "target", "relation", "active_from"]
-
-
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig", errors="ignore")
 
 
 def parse_yaml_simple(text: str) -> dict | None:
@@ -95,7 +95,7 @@ def main() -> int:
             print("问题：truth/relationship_graph.yaml missing")
             print("建议：运行 init_project.py")
         return 1
-    text = read(gpath)
+    text = read_text(gpath)
     if not text.strip():
         issues.append({"severity": "FAIL", "issue": "truth/relationship_graph.yaml is empty"})
     data = parse_yaml_simple(text)

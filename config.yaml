@@ -1,0 +1,116 @@
+# webnovel-director configuration
+# Copy this to config.local.yaml for local overrides (gitignored).
+
+# ── Known OpenAI-compatible provider presets ────────────
+# Users can use any provider by setting base_url + api_key.
+# These presets are for the dashboard quick-select; they are not
+# required for CLI usage.
+provider_presets:
+  - id: "deepseek"
+    label: "DeepSeek"
+    base_url: "https://api.deepseek.com/v1"
+  - id: "openai"
+    label: "OpenAI"
+    base_url: "https://api.openai.com/v1"
+  - id: "gptsapi"
+    label: "GPTsAPI"
+    base_url: "https://api.gptsapi.net/v1"
+  - id: "openrouter"
+    label: "OpenRouter"
+    base_url: "https://openrouter.ai/api/v1"
+  - id: "groq"
+    label: "Groq"
+    base_url: "https://api.groq.com/openai/v1"
+  - id: "together"
+    label: "Together AI"
+    base_url: "https://api.together.xyz/v1"
+  - id: "fireworks"
+    label: "Fireworks AI"
+    base_url: "https://api.fireworks.ai/inference/v1"
+  - id: "siliconflow"
+    label: "硅基流动"
+    base_url: "https://api.siliconflow.cn/v1"
+  - id: "zhipu"
+    label: "智谱 GLM"
+    base_url: "https://open.bigmodel.cn/api/paas/v4"
+  - id: "moonshot"
+    label: "月之暗面 (Kimi)"
+    base_url: "https://api.moonshot.cn/v1"
+  - id: "baichuan"
+    label: "百川智能"
+    base_url: "https://api.baichuan-ai.com/v1"
+  - id: "qwen"
+    label: "通义千问 (DashScope)"
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  - id: "deepbricks"
+    label: "DeepBricks"
+    base_url: "https://api.deepbricks.ai/v1"
+  - id: "custom"
+    label: "自定义 (OpenAI 兼容)"
+    base_url: ""
+
+# ── API Keys ─────────────────────────────────────────────
+# 方式一：在这里直接填写（不推荐提交到 git）
+# 方式二：在 config.local.yaml 中填写（推荐，已 gitignore）
+# 方式三：设环境变量 DEEPSEEK_API_KEY / OPENAI_API_KEY / GPTSAPI_API_KEY
+api_keys:
+  # deepseek: "sk-xxxxxxxxxxxxxxxx"
+  # openai: "sk-xxxxxxxxxxxxxxxx"
+  # gptsapi: "sk-xxxxxxxxxxxxxxxx"
+
+# ── LLM providers ─────────────────────────────────────────
+providers:
+  deepseek:
+    base_url: "https://api.deepseek.com/v1/chat/completions"
+    api_key_env: "DEEPSEEK_API_KEY"
+    default_model: "deepseek-chat"
+    api: "openai-completions"
+
+  openai:
+    base_url: "https://api.openai.com/v1/chat/completions"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "gpt-4o"
+    api: "openai-completions"
+
+  gptsapi:
+    base_url: "https://api.gptsapi.net/v1/chat/completions"
+    api_key_env: "GPTSAPI_API_KEY"
+    default_model: "gpt-5.5"
+    api: "openai-completions"
+
+# ── Writing / review defaults ─────────────────────────────
+writing:
+  model: "deepseek-chat"
+  provider: "deepseek"
+  max_tokens: 8000
+  timeout_s: 300
+  temperature: 0.8
+
+review:
+  model: "deepseek-chat"
+  provider: "deepseek"
+  max_tokens: 4000
+  timeout_s: 180
+  temperature: 0.3
+
+# ── Gate thresholds ────────────────────────────────────────
+concept_gate:
+  pass_threshold: 70
+  warn_threshold: 50
+
+outline_gate:
+  max_iteration_rounds: 3
+  auto_fix_enabled: true
+
+# ── Directory layout (override if needed) ──────────────────
+paths:
+  director_dir: "director"
+  truth_dir: "truth"
+  story_dir: "story/outline"
+  chapters_dirs: ["正文", "chapters"]
+
+# ── Dashboard ──────────────────────────────────────────────
+dashboard:
+  port: 8765
+  auto_refresh_s: 30
+  theme: "dark"

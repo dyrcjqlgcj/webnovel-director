@@ -1,4 +1,4 @@
-# webnovel-director .gitignore
+﻿# webnovel-director .gitignore
 __pycache__/
 *.pyc
 *.pyo
@@ -6,9 +6,16 @@ __pycache__/
 *.orig
 *.tmp
 .DS_Store
-_claude_task.md
-_claude_result.md
-_test_output.md
+config.local.yaml
+*.egg-info/
+dist/
+build/
 
-# runtime state
+# 小说项目目录（不要在工具仓库内创建小说项目）
+books/
 .active_project
+director/
+truth/
+story/
+chapters/
+正文/

@@ -11,22 +11,26 @@ Spawns 4 independent review agents (threads), each checking a different dimensio
   4. hook_agent        — 伏笔回收/新增
 
 Results are merged with cross-agent conflict detection.
-Outputs a unified PASS/WARN/FAIL report.
 """
 from __future__ import annotations
-from pathlib import Path
-import argparse, datetime, json, re, sys
+
+import argparse
+import datetime
+import json
+import re
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
-# ── shared helpers ──
-
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8-sig", errors="ignore") if path.exists() else ""
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import read_text  # noqa: E402
 
 
 def load_task_package(path: Path) -> dict:
-    text = read(path)
-    pkg = {"chapter": 0, "chapter_goal": "", "title_hint": "", "executor": "inkos", "premise_must_hit": [], "forbidden": []}
+    text = read_text(path)
+    pkg = {"chapter": 0, "chapter_goal": "", "title_hint": "", "executor": "inkos",
+           "premise_must_hit": [], "forbidden": []}
     if not text:
         return pkg
     for key in ["chapter", "chapter_goal", "title_hint", "executor"]:
@@ -34,15 +38,18 @@ def load_task_package(path: Path) -> dict:
         if m:
             val = m.group(1).strip().strip('"')
             pkg[key] = int(val) if key == "chapter" and val.isdigit() else val
-    # Parse list fields
     for field in ["premise_must_hit", "forbidden"]:
         items = []
         in_sec = False
         for line in text.splitlines():
-            if line.strip() == f"{field}:": in_sec = True; continue
+            if line.strip() == f"{field}:":
+                in_sec = True
+                continue
             if in_sec:
-                if line.strip().startswith("- "): items.append(line.strip()[2:].strip('"'))
-                elif not line.strip().startswith(" ") and line.strip(): break
+                if line.strip().startswith("- "):
+                    items.append(line.strip()[2:].strip('"'))
+                elif not line.strip().startswith(" ") and line.strip():
+                    break
         pkg[field] = items
     return pkg
 
@@ -50,28 +57,25 @@ def load_task_package(path: Path) -> dict:
 # ── Agent 1: premise_agent ──
 
 def premise_agent(chapter_text: str, task_pkg: dict, premise_text: str) -> dict:
-    """Check premise alignment and forbidden zone compliance."""
     issues = []
-    goal = task_pkg.get("chapter_goal", "")
     must_hit = task_pkg.get("premise_must_hit", [])
     forbidden = task_pkg.get("forbidden", [])
 
-    # 1.1 Forbidden zone check
     if chapter_text:
         for term in forbidden:
             if term and len(term) >= 2 and term in chapter_text:
                 issues.append({"severity": "FAIL", "detail": f"正文含禁词: {term}"})
-        # Default forbidden patterns
-        for pattern, label in [("系统面板", "无系统"), ("任务栏", "无系统"), ("状态栏", "无系统"), ("后宫", "后宫")]:
+        for pattern, label in [("系统面板", "无系统"), ("任务栏", "无系统"),
+                                ("状态栏", "无系统"), ("后宫", "后宫")]:
             if pattern in chapter_text and pattern not in str(forbidden):
                 issues.append({"severity": "FAIL", "detail": f"疑似触犯禁飞区[{label}]: {pattern}"})
 
-    # 1.2 Premise must-hit check
     if chapter_text and must_hit:
         hits = 0
         for term in must_hit:
-            if not term: continue
-            keywords = re.findall(r"[\u4e00-\u9fff]{2,}", term)
+            if not term:
+                continue
+            keywords = re.findall(r"[一-鿿]{2,}", term)
             if keywords and any(kw in chapter_text for kw in keywords):
                 hits += 1
         if hits == 0:
@@ -79,69 +83,64 @@ def premise_agent(chapter_text: str, task_pkg: dict, premise_text: str) -> dict:
         elif hits < len(must_hit):
             issues.append({"severity": "WARN", "detail": f"仅 {hits}/{len(must_hit)} 条命题兑现"})
 
-    # 1.3 Premise promise alignment
     if chapter_text and premise_text:
-        # Extract key concepts from premise name
         m = re.search(r"书名承诺.*?\n+>(.*?)(?:\n##|\Z)", premise_text, re.S)
         if m:
             core = m.group(1).strip()
-            core_words = set(re.findall(r"[\u4e00-\u9fff]{3,}", core))
-            text_words = set(re.findall(r"[\u4e00-\u9fff]{3,}", chapter_text[:2000]))
-            overlap = core_words & text_words
-            if not overlap:
+            core_words = set(re.findall(r"[一-鿿]{3,}", core))
+            text_words = set(re.findall(r"[一-鿿]{3,}", chapter_text[:2000]))
+            if not (core_words & text_words):
                 issues.append({"severity": "WARN", "detail": "章节开头未显式呼应书名承诺"})
 
     verdict = "FAIL" if any(i["severity"] == "FAIL" for i in issues) else ("WARN" if issues else "PASS")
-    return {"agent": "premise_agent", "verdict": verdict, "issues": issues, "evidence": f"must_hit={len(must_hit)} forbidden={len(forbidden)}"}
+    return {"agent": "premise_agent", "verdict": verdict, "issues": issues,
+            "evidence": f"must_hit={len(must_hit)} forbidden={len(forbidden)}"}
 
 
 # ── Agent 2: consistency_agent ──
 
 def consistency_agent(chapter_text: str, task_pkg: dict, book_dir: Path) -> dict:
-    """Check resource ledger, particle ledger, and relationship graph consistency."""
     issues = []
-    ch_num = task_pkg.get("chapter", 0)
-
-    # 2.1 Resource ledger scan
-    rl = read(book_dir / "truth" / "resource_ledger.md")
+    rl = read_text(book_dir / "truth" / "resource_ledger.md")
+    active_resources = []
     if rl and chapter_text:
-        active_resources = []
         for line in rl.splitlines():
             s = line.strip()
-            if s.startswith("|") and "---" not in s and "Chapter" not in s and "EXPIRED" not in s and "Expired" not in s:
+            if s.startswith("|") and "---" not in s and "Chapter" not in s \
+                    and "EXPIRED" not in s and "Expired" not in s:
                 cells = [c.strip() for c in s.strip("|").split("|")]
                 if len(cells) >= 4 and cells[0].isdigit():
                     active_resources.append(cells[1])
         mentioned = sum(1 for r in active_resources if r and r in chapter_text)
         if active_resources and mentioned == 0:
-            issues.append({"severity": "WARN", "detail": f"正文未提及任何活跃资源 ({len(active_resources)}条)"})
+            issues.append({"severity": "WARN",
+                           "detail": f"正文未提及任何活跃资源 ({len(active_resources)}条)"})
 
-    # 2.2 Relationship graph check
-    rg = read(book_dir / "truth" / "relationship_graph.yaml")
+    rg = read_text(book_dir / "truth" / "relationship_graph.yaml")
     if rg and "edges:" in rg and chapter_text:
         edge_count = rg.count("source:")
-        if edge_count > 2:  # More than template placeholders
-            # Check if any active edge's entities appear in text
-            entities = set(re.findall(r"source:\s*\"?([^\"#\n]+)", rg)) | set(re.findall(r"target:\s*\"?([^\"#\n]+)", rg))
+        if edge_count > 2:
+            entities = (set(re.findall(r"source:\s*\"?([^\"#\n]+)", rg))
+                        | set(re.findall(r"target:\s*\"?([^\"#\n]+)", rg)))
             entities -= {"{{PROTAGONIST}}", "{{CORE_MECHANISM}}", "{{ANTAGONIST_FORCE}}"}
             mentioned = sum(1 for e in entities if e and e in chapter_text)
             if entities and mentioned == 0:
-                issues.append({"severity": "WARN", "detail": f"正文未涉及关系图中 {len(entities)} 个实体"})
+                issues.append({"severity": "WARN",
+                               "detail": f"正文未涉及关系图中 {len(entities)} 个实体"})
 
     verdict = "FAIL" if any(i["severity"] == "FAIL" for i in issues) else ("WARN" if issues else "PASS")
-    return {"agent": "consistency_agent", "verdict": verdict, "issues": issues, "evidence": f"resources_active={len(active_resources) if 'active_resources' in dir() else 0}"}
+    return {"agent": "consistency_agent", "verdict": verdict, "issues": issues,
+            "evidence": f"resources_active={len(active_resources)}"}
 
 
 # ── Agent 3: transition_agent ──
 
 def transition_agent(chapter_text: str, task_pkg: dict) -> dict:
-    """Check prose quality: hook, structure, dialogue, readability."""
     issues = []
     if not chapter_text:
         return {"agent": "transition_agent", "verdict": "PASS", "issues": [], "evidence": "no text"}
     chars = len(chapter_text.replace("\n", "").replace(" ", ""))
 
-    # 3.1 Hook presence
     tail = chapter_text[-400:] if len(chapter_text) > 400 else chapter_text
     hook_markers = ["？", "…", "——", "不再", "开始", "将要", "发现", "突然", "不是", "原来"]
     hook_hits = sum(1 for m in hook_markers if m in tail)
@@ -150,17 +149,14 @@ def transition_agent(chapter_text: str, task_pkg: dict) -> dict:
     elif hook_hits < 2:
         issues.append({"severity": "WARN", "detail": "章末钩子弱"})
 
-    # 3.2 Structure
     para_count = len([l for l in chapter_text.split("\n") if l.strip()])
     if para_count < 15:
         issues.append({"severity": "WARN", "detail": f"段落偏少 ({para_count})"})
 
-    # 3.3 Dialogue density
-    dialog_chars = len(re.findall(r"[\u300c\u300d\u201c\u201d\u2018\u2019\uff1a]", chapter_text))
+    dialog_chars = len(re.findall(r"[「」“”‘’：]", chapter_text))
     if chars > 1500 and dialog_chars < chars * 0.02:
         issues.append({"severity": "WARN", "detail": "对白密度极低"})
 
-    # 3.4 Length
     if chars < 1000:
         issues.append({"severity": "FAIL", "detail": f"过短 ({chars}字)"})
     elif chars < 1800:
@@ -169,20 +165,19 @@ def transition_agent(chapter_text: str, task_pkg: dict) -> dict:
         issues.append({"severity": "WARN", "detail": f"偏长 ({chars}字)"})
 
     verdict = "FAIL" if any(i["severity"] == "FAIL" for i in issues) else ("WARN" if issues else "PASS")
-    return {"agent": "transition_agent", "verdict": verdict, "issues": issues, "evidence": f"chars={chars} paras={para_count}"}
+    return {"agent": "transition_agent", "verdict": verdict, "issues": issues,
+            "evidence": f"chars={chars} paras={para_count}"}
 
 
 # ── Agent 4: hook_agent ──
 
 def hook_agent(chapter_text: str, task_pkg: dict, book_dir: Path) -> dict:
-    """Check pending hooks: which are used, which are new, what needs resolution."""
     issues = []
-    hooks_text = read(book_dir / "truth" / "pending_hooks.md")
+    hooks_text = read_text(book_dir / "truth" / "pending_hooks.md")
     ch_num = task_pkg.get("chapter", 0)
     if not hooks_text:
         return {"agent": "hook_agent", "verdict": "PASS", "issues": [], "evidence": "no hooks file"}
 
-    # 4.1 Parse active hooks (status = open/进行中/active)
     active_hooks = []
     for line in hooks_text.splitlines():
         s = line.strip()
@@ -190,41 +185,41 @@ def hook_agent(chapter_text: str, task_pkg: dict, book_dir: Path) -> dict:
             cells = [c.strip() for c in s.strip("|").split("|")]
             if len(cells) >= 5:
                 status = cells[-1].lower() if cells[-1] else ""
-                is_active = any(t in status for t in ["open", "进行中", "active", "🟡"])
-                if is_active:
-                    active_hooks.append({"id": cells[0], "promise": cells[2] if len(cells) > 2 else "", "priority": cells[3] if len(cells) > 3 else ""})
+                if any(t in status for t in ["open", "进行中", "active", "🟡"]):
+                    active_hooks.append({"id": cells[0],
+                                         "promise": cells[2] if len(cells) > 2 else "",
+                                         "priority": cells[3] if len(cells) > 3 else ""})
 
     if not active_hooks:
         return {"agent": "hook_agent", "verdict": "PASS", "issues": [], "evidence": "no active hooks"}
 
-    # 4.2 Check hook coverage in chapter
     if chapter_text:
         used = 0
         for h in active_hooks:
-            keywords = re.findall(r"[\u4e00-\u9fff]{3,}", h["promise"])
+            keywords = re.findall(r"[一-鿿]{3,}", h["promise"])
             if keywords and any(kw in chapter_text for kw in keywords):
                 used += 1
         if used == 0 and len(active_hooks) >= 3:
-            issues.append({"severity": "WARN", "detail": f"本章未涉及 {len(active_hooks)} 条活跃伏笔"})
-        elif used > 0:
-            pass  # hooks are being used
+            issues.append({"severity": "WARN",
+                           "detail": f"本章未涉及 {len(active_hooks)} 条活跃伏笔"})
 
-    # 4.3 Check for overdue hooks (high priority, due before current chapter)
     for h in active_hooks:
         due_str = h.get("priority", "")
         m = re.search(r"(\d+)", due_str)
         if m and ch_num > int(m.group(1)):
-            issues.append({"severity": "WARN", "detail": f"伏笔 {h['id']} 可能逾期 (due<{m.group(1)}, current={ch_num})"})
+            issues.append({"severity": "WARN",
+                           "detail": f"伏笔 {h['id']} 可能逾期 (due<{m.group(1)})"})
 
     verdict = "FAIL" if any(i["severity"] == "FAIL" for i in issues) else ("WARN" if issues else "PASS")
-    return {"agent": "hook_agent", "verdict": verdict, "issues": issues, "evidence": f"active_hooks={len(active_hooks)}"}
+    return {"agent": "hook_agent", "verdict": verdict, "issues": issues,
+            "evidence": f"active_hooks={len(active_hooks)}"}
 
 
 # ── orchestrator ──
 
-def run_parallel(chapter_text: str, task_pkg: dict, book_dir: Path) -> dict:
+def run_parallel_review(chapter_text: str, task_pkg: dict, book_dir: Path) -> dict:
     """Run 4 agents in parallel and merge results."""
-    premise_text = read(book_dir / "director" / "premise.md")
+    premise_text = read_text(book_dir / "director" / "premise.md")
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = {
@@ -239,18 +234,17 @@ def run_parallel(chapter_text: str, task_pkg: dict, book_dir: Path) -> dict:
             try:
                 results[name] = future.result()
             except Exception as e:
-                results[name] = {"agent": f"{name}_agent", "verdict": "FAIL", "issues": [{"severity": "FAIL", "detail": f"Agent 异常: {e}"}], "evidence": "error"}
+                results[name] = {"agent": f"{name}_agent", "verdict": "FAIL",
+                                 "issues": [{"severity": "FAIL", "detail": f"Agent 异常: {e}"}],
+                                 "evidence": "error"}
 
-    # Cross-agent conflict detection
     conflicts = []
     verdicts = [r["verdict"] for r in results.values()]
     if "PASS" in verdicts and "FAIL" in verdicts:
-        # premise says PASS but consistency says FAIL — valid inconsistency
         pass_agents = [r["agent"] for r in results.values() if r["verdict"] == "PASS"]
         fail_agents = [r["agent"] for r in results.values() if r["verdict"] == "FAIL"]
         conflicts.append(f"交叉矛盾: {', '.join(pass_agents)} 通过但 {', '.join(fail_agents)} 未通过")
 
-    # Merge verdict
     if any(r["verdict"] == "FAIL" for r in results.values()):
         status = "FAIL"
     elif any(r["verdict"] == "WARN" for r in results.values()):
@@ -258,16 +252,13 @@ def run_parallel(chapter_text: str, task_pkg: dict, book_dir: Path) -> dict:
     else:
         status = "PASS"
 
-    # Compile a merged problem list for post_writeback
     all_issues = []
     for r in results.values():
         for i in r.get("issues", []):
             all_issues.append(f"[{r['agent']}] {i['detail']}")
 
     return {
-        "status": status,
-        "agents": results,
-        "conflicts": conflicts,
+        "status": status, "agents": results, "conflicts": conflicts,
         "all_issues": all_issues,
         "fail_count": sum(1 for v in verdicts if v == "FAIL"),
         "warn_count": sum(1 for v in verdicts if v == "WARN"),
@@ -285,7 +276,6 @@ def main() -> int:
     book = Path(args.book_dir).resolve()
     ch_str = f"{args.chapter:04d}"
 
-    # Find task package
     tp = book / "director" / "task_packages" / f"{ch_str}.yaml"
     if not tp.exists():
         if args.json:
@@ -300,11 +290,12 @@ def main() -> int:
     if args.text:
         tp_text = Path(args.text)
         if not tp_text.exists():
-            candidates = list(book.glob(f"chapters/第{ch_str}章-*.md")) + list(book.glob(f"chapters/第{ch_str}章-*.txt"))
-            if candidates: tp_text = candidates[0]
-        chapter_text = read(tp_text) if tp_text.exists() else ""
+            candidates = list(book.glob(f"chapters/{ch_str}_*.txt")) + list(book.glob(f"chapters/{ch_str}_*.md"))
+            if candidates:
+                tp_text = candidates[0]
+        chapter_text = read_text(tp_text) if tp_text.exists() else ""
 
-    result = run_parallel(chapter_text, task_pkg, book)
+    result = run_parallel_review(chapter_text, task_pkg, book)
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -321,8 +312,7 @@ def main() -> int:
             for i in r.get("issues", []):
                 print(f"    - {i['detail']}")
         if result["conflicts"]:
-            print()
-            print("=== 交叉矛盾 ===")
+            print("\n=== 交叉矛盾 ===")
             for c in result["conflicts"]:
                 print(f"  [!] {c}")
         print()
@@ -339,188 +329,6 @@ def main() -> int:
             print("下一步：repair-feedback")
 
     return 1 if result["status"] == "FAIL" else 0
-
-
-# ── JSON5 parser (no external dependency) ──
-
-def _strip_json5(text: str) -> str:
-    """Strip JSON5 comments and trailing commas to produce valid JSON."""
-    lines = []
-    for line in text.splitlines():
-        # Remove // line comments (but not inside strings)
-        stripped = line
-        in_string = False
-        string_char = None
-        i = 0
-        while i < len(line):
-            ch = line[i]
-            if not in_string:
-                if ch in ('"', "'"):
-                    in_string = True
-                    string_char = ch
-                elif ch == '/' and i + 1 < len(line) and line[i + 1] == '/':
-                    stripped = line[:i]
-                    break
-                elif ch == '/' and i + 1 < len(line) and line[i + 1] == '*':
-                    # Block comment on same line
-                    end = line.find('*/', i + 2)
-                    if end >= 0:
-                        line = line[:i] + line[end + 2:]
-                        i -= 1
-                    else:
-                        stripped = line[:i]
-                        break
-            else:
-                if ch == '\\' and i + 1 < len(line):
-                    i += 1  # skip escaped char
-                elif ch == string_char:
-                    in_string = False
-                    string_char = None
-            i += 1
-        stripped = stripped.rstrip()
-        # Remove trailing commas before ] or }
-        stripped = re.sub(r',\s*([\]\}])', r'\1', stripped)
-        lines.append(stripped)
-    return '\n'.join(lines)
-
-
-def load_json5(path: Path) -> dict:
-    """Load a JSON5 file, returning a dict (empty dict on failure)."""
-    raw = read(path)
-    if not raw:
-        return {}
-    # Remove block comments spanning multiple lines
-    raw = re.sub(r'/\*.*?\*/', '', raw, flags=re.DOTALL)
-    # Strip JS-style comments and convert JSON5 to JSON
-    clean = _strip_json5(raw)
-    # Handle unquoted keys (JSON5): wrap bare identifiers before :
-    clean = re.sub(r'(?<!")[a-zA-Z_]\w*(?=\s*:)', r'"\g<0>"', clean)
-    # Handle single-quoted strings
-    clean = re.sub(r"'([^'\\]*(?:\\.[^'\\]*)*)'", r'"\1"', clean)
-    try:
-        return json.loads(clean)
-    except json.JSONDecodeError:
-        # Fallback: aggressive strip only (no unquoted keys)
-        clean = re.sub(r'//[^\n]*', '', raw)
-        clean = re.sub(r',\s*([\]\}])', r'\1', clean)
-        clean = re.sub(r'(?<!")[a-zA-Z_]\w*(?=\s*:)', r'"\g<0>"', clean)
-        try:
-            return json.loads(clean)
-        except json.JSONDecodeError:
-            return {}
-
-
-# ── L3 自动触发 ──
-
-def _find_volume_map_path(book_dir: Path) -> Path | None:
-    for candidate in [
-        book_dir / "director" / "volume_map.md",
-        book_dir / "story" / "outline" / "volume_map.md",
-    ]:
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def _parse_volume_boundaries(vm_text: str) -> list[dict]:
-    """Extract volume end chapters from volume_map.md table."""
-    vols = []
-    cn_nums = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
-               "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
-    for line in vm_text.splitlines():
-        s = line.strip()
-        if not s.startswith("|") or "---" in s:
-            continue
-        cells = [c.strip() for c in s.strip("|").split("|")]
-        if len(cells) < 2:
-            continue
-        vol_name = cells[0]
-        vol_match = re.search(r"([\d一二三四五六七八九十]+)", vol_name)
-        if not vol_match:
-            continue
-        vol_str = vol_match.group(1)
-        vol_num = cn_nums.get(vol_str)
-        if vol_num is None:
-            try:
-                vol_num = int(vol_str)
-            except ValueError:
-                continue
-        rm = re.search(r"(\d+)\s*[-–—]\s*(\d+)", cells[1])
-        if rm:
-            vols.append({"volume": vol_num, "start": int(rm.group(1)), "end": int(rm.group(2))})
-    return vols
-
-
-def auto_trigger_l3_check(book_dir: str) -> dict:
-    """Determine if the current chapter warrants a full L3 review.
-
-    Triggers when:
-      - currentChapter % 30 == 0 (milestone checkpoint)
-      - currentChapter is the end of a volume (volume_map.md boundary)
-
-    Returns:
-        {"triggered": bool, "reason": str, "result": dict}
-    """
-    book = Path(book_dir).resolve()
-    state_path = book / "director" / "director_state.json5"
-    if not state_path.exists():
-        return {"triggered": False, "reason": "director_state.json5 不存在"}
-
-    state = load_json5(state_path)
-    current_ch = state.get("currentChapter", 0)
-    if not current_ch:
-        # Also try nested path
-        current_ch = state.get("currentChapter", state.get("chapter", 0))
-    if not current_ch or not isinstance(current_ch, int):
-        return {"triggered": False, "reason": "无法读取 currentChapter"}
-
-    # Check milestone (every 30 chapters)
-    is_milestone = (current_ch % 30 == 0)
-
-    # Check volume boundary
-    is_vol_end = False
-    vol_label = ""
-    vm_path = _find_volume_map_path(book)
-    if vm_path:
-        vols = _parse_volume_boundaries(read(vm_path))
-        for v in vols:
-            if v["end"] == current_ch:
-                is_vol_end = True
-                vol_label = f"第{v['volume']}卷"
-                break
-
-    if not is_milestone and not is_vol_end:
-        return {"triggered": False, "reason": f"Ch{current_ch} 无需触发 (非30章里程碑, 非卷末)"}
-
-    # Build reason string
-    reasons = []
-    if is_milestone:
-        reasons.append(f"第{current_ch}章里程碑 (30章节点)")
-    if is_vol_end:
-        reasons.append(f"{vol_label}卷末章")
-    reason = "L3 自动触发: " + ", ".join(reasons)
-
-    print(f"[L3 AUTO] {reason}")
-
-    # Run review_parallel logic
-    ch_str = f"{current_ch:04d}"
-    tp = book / "director" / "task_packages" / f"{ch_str}.yaml"
-    if not tp.exists():
-        return {"triggered": True, "reason": reason, "result": {"status": "SKIP", "detail": "task_package 不存在, 跳过审查"}}
-
-    task_pkg = load_task_package(tp)
-
-    # Find chapter text
-    chapter_text = ""
-    candidates = list(book.glob(f"chapters/第{ch_str}章-*.md")) + list(book.glob(f"chapters/第{ch_str}章-*.txt"))
-    if candidates:
-        chapter_text = read(candidates[0])
-
-    try:
-        result = run_parallel(chapter_text, task_pkg, book)
-        return {"triggered": True, "reason": reason, "result": result}
-    except Exception as e:
-        return {"triggered": True, "reason": reason, "result": {"status": "ERROR", "detail": str(e)}}
 
 
 if __name__ == "__main__":

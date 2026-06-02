@@ -7,6 +7,10 @@ Usage:
 This is a fast filter, not a deep literary review.
 """
 from pathlib import Path
+import sys
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import read_text
 import argparse, re, json
 
 DEFAULT_TERMS = {
@@ -14,8 +18,6 @@ DEFAULT_TERMS = {
     "drift": ["建公会", "统一城市", "抢首通", "组队推", "正面击败", "收编"],
     "craft": ["章末", "转场", "伏笔", "目标", "后果"],
 }
-
-def read(p): return Path(p).read_text(encoding="utf-8", errors="ignore")
 
 def main():
     ap = argparse.ArgumentParser()
@@ -34,7 +36,7 @@ def main():
         n=int(m.group(1))
         if args.start and n<args.start: continue
         if args.end and n>args.end: continue
-        t=read(f)
+        t=read_text(f)
         counts={k:{term:t.count(term) for term in terms} for k,terms in DEFAULT_TERMS.items()}
         drift_hits=[term for term,c in counts["drift"].items() if c]
         no_premise = all(c==0 for c in counts["premise"].values())

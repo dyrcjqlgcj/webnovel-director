@@ -4,196 +4,317 @@
 Usage:
   python dashboard_server.py <book_dir> [--port 8765] [--no-open]
 
-Single-file HTTP server. Reads the project state and renders an interactive
+Single-file HTTP server. Reads project state and renders an interactive
 dashboard with chapter status, progress tracking, and one-click actions.
+HTML/CSS/JS are served from dashboard/templates/ and dashboard/static/.
 """
 
 from __future__ import annotations
-import argparse, datetime, json, os, re, subprocess, sys, time, webbrowser
+
+import argparse
+import datetime
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+import uuid
+import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-# ── ANSI color codes ──
-RED = '\033[91m'
-GREEN = '\033[92m'
-YELLOW = '\033[93m'
-CYAN = '\033[96m'
-MAGENTA = '\033[95m'
-BOLD = '\033[1m'
-DIM = '\033[2m'
-RESET = '\033[0m'
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import (  # noqa: E402
+    SKILL_ROOT,
+    _detect_queue_columns,
+    count_body_chars,
+    parse_chapter_queue,
+    parse_json5,
+    parse_volume_core_events,
+    parse_volume_map,
+    read_text,
+    rebuild_volume_events_section,
+    replace_events_in_section,
+    split_table_cells,
+    strip_markdown,
+    write_chapter_queue,
+    write_text,
+    _find_volume_section,
+)
+from lib.llm import call_llm  # noqa: E402
 
-SCRIPTS_DIR = Path(__file__).resolve().parent
+SCRIPTS_DIR = SKILL_ROOT / "scripts"
+TEMPLATE_DIR = SKILL_ROOT / "dashboard" / "templates"
+STATIC_DIR = SKILL_ROOT / "dashboard" / "static"
+
+# Cache for static file contents
+_static_cache: dict[str, bytes] = {}
+
+# Cache for project state (30s TTL to match frontend auto-refresh)
+_state_cache: dict[str, tuple[float, dict]] = {}
+_STATE_CACHE_TTL = 30  # seconds
+
+# Async job tracking for write_flow
+_write_jobs: dict[str, dict] = {}
+_write_jobs_lock = threading.Lock()
+
+# Async job tracking for batch_write
+_batch_jobs: dict[str, dict] = {}
+_batch_jobs_lock = threading.Lock()
+
+# Scanner knowledge cache for scan_concepts endpoint
+_scanner_context: str | None = None
+_scanner_context_lock = threading.Lock()
 
 
-def read(p: Path) -> str:
-    return p.read_text(encoding="utf-8-sig", errors="ignore") if p.exists() else ""
+def _load_scanner_context() -> str:
+    """Lazily load all scanner reference docs into a single cached string."""
+    global _scanner_context
+    if _scanner_context is not None:
+        return _scanner_context
+    with _scanner_context_lock:
+        if _scanner_context is not None:
+            return _scanner_context
+        parts = []
+        scanner_dir = SKILL_ROOT / "subsystems" / "scanner"
+        for fname in ["guide.md"]:
+            fp = scanner_dir / fname
+            if fp.exists():
+                parts.append(read_text(fp))
+        refs_dir = scanner_dir / "references"
+        if refs_dir.exists():
+            for fp in sorted(refs_dir.glob("*.md")):
+                parts.append(f"---\n# {fp.name}\n")
+                parts.append(read_text(fp))
+        _scanner_context = "\n\n".join(parts)
+        return _scanner_context
 
 
-def parse_json5(text: str) -> dict:
-    """Minimal JSON5 parser for director_state."""
-    text = re.sub(r"//.*", "", text)
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    text = re.sub(r"([,{]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:", r'\1"\2":', text)
-    text = re.sub(r",\s*([}\]])", r"\1", text)
+def _get_platform_context(platform: str) -> str:
+    """Extract platform-specific guidance from scanner reference docs."""
+    ctx = _load_scanner_context()
+    # Extract key platform sections
+    platform_keywords = {
+        "番茄": ["番茄", "fanqie"],
+        "起点": ["起点", "qidian"],
+        "七猫": ["七猫"],
+        "晋江": ["晋江"],
+        "知乎盐选": ["知乎", "盐选", "盐言"],
+    }
+    keywords = platform_keywords.get(platform, [platform])
+    lines = ctx.split("\n")
+    relevant = []
+    capture = False
+    for line in lines:
+        for kw in keywords:
+            if kw in line and (line.strip().startswith("##") or line.strip().startswith("###")):
+                capture = True
+                break
+        if capture and line.strip().startswith("##") and all(kw not in line for kw in keywords):
+            capture = False
+        if capture:
+            relevant.append(line)
+    if not relevant:
+        # Return first 3000 chars as fallback
+        return ctx[:3000]
+    return "\n".join(relevant[:200])
+
+
+def run_scan_concepts(platform: str, genre_preference: str = "") -> dict:
+    """Generate market-scan concept candidates for a platform via LLM."""
+    platform_ctx = _get_platform_context(platform)
+    genre_hint = f"聚焦{genre_preference}题材。" if genre_preference else ""
+
+    prompt = f"""你是一位专注于{platform}平台的网文市场分析师。以下是平台市场数据和读者画像：
+
+{platform_ctx}
+
+---
+任务：为{platform}平台生成4个差异化的网文选题方案。{genre_hint}
+
+每个方案必须包含：
+1. 书名：符合{platform}命名规律，吸引眼球
+2. 梗概：一句话（≤50字），说清核心看点和情绪钩子
+3. 金手指：主角的独特能力/优势，必须是机制型（不是人格型）
+4. 世界观：2-3句话描述故事世界背景
+5. 题材标签：2-4个标签
+6. 市场理由：为什么这个选题适合{platform}的读者（引用平台数据支撑）
+7. 信心度：1-100
+
+要求：
+- 4个方案要有差异：不同题材、不同金手指类型、不同情绪走向
+- 每个方案都必须是可执行的，不是纯概念
+- 梗概要能一句话传播，读者3秒内能理解卖点
+- 金手指要有成长梯度和排他性，不能开局即巅峰
+
+严格按照以下JSON数组格式输出，不要输出任何其他内容：
+[
+  {{
+    "title": "...",
+    "summary": "...",
+    "ability": "...",
+    "world": "...",
+    "genre_tags": ["...", "..."],
+    "market_rationale": "...",
+    "confidence": 85
+  }}
+]"""
+
     try:
-        return json.loads(text)
+        response = call_llm(prompt, temperature=0.85, max_tokens=2500, timeout=90)
+        if not response:
+            return {"success": False, "error": "LLM调用失败，请检查API密钥是否配置", "candidates": []}
+
+        # Try to extract JSON array from response
+        json_match = re.search(r"\[[\s\S]*\]", response.strip())
+        if json_match:
+            candidates = json.loads(json_match.group(0))
+        else:
+            candidates = json.loads(response.strip())
+
+        if not isinstance(candidates, list):
+            return {"success": False, "error": "LLM返回格式不正确", "candidates": []}
+
+        return {"success": True, "candidates": candidates, "platform": platform}
     except json.JSONDecodeError:
-        return {}
+        return {"success": False, "error": "LLM返回格式解析失败，请重试", "candidates": []}
+    except Exception as e:
+        return {"success": False, "error": str(e), "candidates": []}
 
 
-def parse_chapter_queue(text: str) -> list[dict]:
-    rows = []
-    for line in text.splitlines():
-        s = line.strip()
-        if not s.startswith("|") or "---" in s or "Chapter" in s:
-            continue
-        cells = [c.strip() for c in s.strip("|").split("|")]
-        if len(cells) >= 6:
-            n = re.sub(r"\D", "", cells[0])
-            if n.isdigit():
-                rows.append({
-                    "chapter": int(n),
-                    "title": cells[1],
-                    "goal": cells[2],
-                    "premise_hit": cells[3],
-                    "forbidden": cells[4],
-                    "status": cells[5].upper() if cells[5].upper() in ("PASS", "WARN", "FAIL", "WRITTEN", "待写", "QUEUE") else cells[5],
-                })
-    return rows
+def _load_html() -> str:
+    return read_text(TEMPLATE_DIR / "index.html")
 
 
-def strip_markdown(text: str) -> str:
-    """Strip markdown formatting, keep only body text."""
-    # Remove headers (# ...)
-    text = re.sub(r"^#{1,6}\s+.+$", "", text, flags=re.MULTILINE)
-    # Remove code blocks
-    text = re.sub(r"```[\s\S]*?```", "", text)
-    # Remove horizontal rules
-    text = re.sub(r"^[-*_]{3,}\s*$", "", text, flags=re.MULTILINE)
-    # Remove all whitespace (blank lines, spaces, newlines)
-    text = re.sub(r"\s+", "", text)
-    return text
+def _load_static(filename: str) -> bytes:
+    if filename not in _static_cache:
+        fpath = STATIC_DIR / filename
+        if fpath.exists():
+            _static_cache[filename] = fpath.read_bytes()
+        else:
+            _static_cache[filename] = b""
+    return _static_cache[filename]
 
 
-def count_words(book_dir: Path) -> int:
-    """Count body text characters (no markdown formatting)."""
-    total = 0
-    for ch_dir_name in ("正文", "chapters"):
+def count_chapter_words_detail(book_dir: Path) -> dict[int, int]:
+    counts = {}
+    for ch_dir_name in ("正文", "chapters", "story/chapters"):
         ch_dir = book_dir / ch_dir_name
         if ch_dir.exists():
             for f in sorted(ch_dir.glob("*.md")):
-                total += len(strip_markdown(read(f)))
-    return total
-
-
-def parse_volumes(book_dir: Path) -> list[dict]:
-    """Parse volume structure from volume_map.md."""
-    for vm_path in [book_dir / "director" / "volume_map.md",
-                    book_dir / "story" / "outline" / "volume_map.md"]:
-        if not vm_path.exists():
-            continue
-        text = read(vm_path)
-        vols = []
-        # Match volume table rows: | 一 | 1-80 | ... |
-        for line in text.splitlines():
-            s = line.strip()
-            if not s.startswith("|") or "---" in s:
-                continue
-            cells = [c.strip() for c in s.strip("|").split("|")]
-            if len(cells) < 3:
-                continue
-            # Skip header rows and non-volume rows
-            if cells[0] in ("卷", "章节", "Chapter", "") or not cells[0]:
-                continue
-            # Only match rows where first cell is a Chinese number or digit followed by "卷"
-            if not re.match(r"^[一二三四五六七八九十\d]+$", cells[0]):
-                continue
-            vol_label = cells[0]
-            ch_range = cells[1] if len(cells) > 1 else ""
-            # Parse chapter range like "1-75"
-            rm = re.search(r"(\d+)\s*[-–—]\s*(\d+)", ch_range)
-            if rm:
-                start, end = int(rm.group(1)), int(rm.group(2))
-                vols.append({
-                    "label": vol_label.strip(),
-                    "start": start, "end": end,
-                    "chapters": end - start + 1,
-                    "theme": cells[4].strip() if len(cells) > 4 else "",
-                })
-        return vols
-    return []
+                m = re.match(r"第0*(\d+)章", f.name)
+                if m:
+                    counts[int(m.group(1))] = len(strip_markdown(read_text(f)))
+    return counts
 
 
 def get_project_state(book_dir: Path) -> dict:
     """Build complete project state for the dashboard."""
-    state_file = (book_dir / "director" / "director_state.json5")
-    state = parse_json5(read(state_file))
+    state_file = book_dir / "director" / "director_state.json5"
+    state = {}
+    if state_file.exists():
+        state = parse_json5(read_text(state_file))
 
-    queue = parse_chapter_queue(read(book_dir / "director" / "chapter_queue.md"))
+    queue = parse_chapter_queue(book_dir / "director" / "chapter_queue.md")
 
-    # Chapter files
     chapter_files = []
-    for ch_dir_name in ("正文", "chapters"):
+    for ch_dir_name in ("正文", "chapters", "story/chapters"):
         ch_dir = book_dir / ch_dir_name
         if ch_dir.exists():
             for f in sorted(ch_dir.glob("*.md")):
                 chapter_files.append(f)
 
-    total_chars = count_words(book_dir)
+    total_chars = count_body_chars(book_dir)
+    chapter_words = count_chapter_words_detail(book_dir)
 
-    # Per-chapter word counts + review timestamps
-    chapter_words = {}
+    # Chapter mtimes
     chapter_mtime = {}
-    for ch_dir_name in ("正文", "chapters"):
+    for ch_dir_name in ("正文", "chapters", "story/chapters"):
         ch_dir = book_dir / ch_dir_name
         if ch_dir.exists():
             for f in sorted(ch_dir.glob("*.md")):
                 m = re.match(r"第0*(\d+)章", f.name)
                 if m:
                     ch_num = int(m.group(1))
-                    chapter_words[ch_num] = len(strip_markdown(read(f)))
-                    chapter_mtime[ch_num] = datetime.datetime.fromtimestamp(f.stat().st_mtime).strftime("%m-%d %H:%M")
+                    chapter_mtime[ch_num] = datetime.datetime.fromtimestamp(
+                        f.stat().st_mtime).strftime("%m-%d %H:%M")
 
-    # Load review history (from both dashboard and main session reviews)
+    # Review history
     review_history = {}
     rh_path = book_dir / "director" / ".review_history.json"
     if rh_path.exists():
         try:
-            review_history = json.loads(read(rh_path))
+            review_history = json.loads(read_text(rh_path))
         except json.JSONDecodeError:
             pass
 
+    # Track chapter file numbers and titles
+    chapter_file_nums = set()
+    chapter_titles_from_files: dict[int, str] = {}
+    for ch_dir_name in ("正文", "chapters", "story/chapters"):
+        ch_dir = book_dir / ch_dir_name
+        if ch_dir.exists():
+            for f in sorted(ch_dir.glob("*.md")):
+                m = re.match(r"第0*(\d+)章", f.name)
+                if m:
+                    ch_num = int(m.group(1))
+                    chapter_file_nums.add(ch_num)
+                    # Extract title from filename: "第011章-硫雾压境.md" → "硫雾压境"
+                    rest = f.name[m.end():]
+                    title = rest.lstrip("-_. ").replace(".md", "").strip()
+                    if title:
+                        chapter_titles_from_files[ch_num] = title
+
     for ch in queue:
+        ch["title"] = ch.get("title_hint", "") or chapter_titles_from_files.get(ch["chapter"], "")
         ch["words"] = chapter_words.get(ch["chapter"], 0)
         ch["mtime"] = chapter_mtime.get(ch["chapter"], "")
+        # Override status: if chapter has prose file, it's "written" regardless of queue status
+        if ch["words"] > 0 and ch["chapter"] in chapter_file_nums:
+            ch["status"] = "written"
         rh = review_history.get(str(ch["chapter"]), {})
         ch["reviewed_at"] = rh.get("time", "")
         ch["review_verdict"] = rh.get("verdict", "")
         ch["review_issues"] = rh.get("issues", [])
 
-    # Audit status from last_audit.md
+    # Merge in chapters from files not already in the queue
+    queued_chapters = {ch["chapter"] for ch in queue}
+    for ch_num in sorted(chapter_file_nums):
+        if ch_num not in queued_chapters:
+            title = chapter_titles_from_files.get(ch_num, f"第{ch_num:03d}章")
+            queue.append({
+                "chapter": ch_num,
+                "title_hint": title,
+                "title": title,
+                "goal": "",
+                "premise_must_hit": "",
+                "forbidden": "",
+                "status": "written",
+                "words": chapter_words.get(ch_num, 0),
+                "mtime": chapter_mtime.get(ch_num, ""),
+                "reviewed_at": "",
+                "review_verdict": "",
+                "review_issues": [],
+            })
+    queue.sort(key=lambda ch: ch["chapter"])
+
+    # Audit status
     last_audit = {}
     audit_path = book_dir / "director" / "last_audit.md"
     if audit_path.exists():
-        audit_text = read(audit_path)
+        audit_text = read_text(audit_path)
         last_audit["status"] = "PASS" if "PASS" in audit_text else (
-            "WARN" if "WARN" in audit_text else (
-                "FAIL" if "FAIL" in audit_text else "NONE"))
-        # Strip markdown formatting for display
-        clean = re.sub(r"^#{1,6}\s+.+$", "", audit_text[:500], flags=re.MULTILINE)
-        clean = re.sub(r"```[\s\S]*?```", "", clean)
-        clean = re.sub(r"`([^`]+)`", r"\1", clean)
-        clean = re.sub(r"^[-*_]{3,}\s*$", "", clean, flags=re.MULTILINE)
-        last_audit["summary"] = clean.strip()[:200]
+            "WARN" if "WARN" in audit_text else ("FAIL" if "FAIL" in audit_text else "NONE"))
+        last_audit["summary"] = audit_text[:300]
 
-    # Foreshadowing from truth/pending_hooks.md
+    # Hooks
     hooks = []
     hooks_path = book_dir / "truth" / "pending_hooks.md"
     if hooks_path.exists():
-        hook_text = read(hooks_path)
-        # Try table format: | H001 | ...
+        hook_text = read_text(hooks_path)
         for line in hook_text.splitlines():
             s = line.strip()
             if s.startswith("| H") or s.startswith("|H"):
@@ -204,11 +325,19 @@ def get_project_state(book_dir: Path) -> dict:
                 hooks.append(s.strip("- ").strip())
 
     # Premise summary
-    premise_text = read(book_dir / "director" / "premise.md")
+    premise_text = read_text(book_dir / "director" / "premise.md")
     premise_summary = ""
     m = re.search(r"书名承诺[：:]\s*(.+)", premise_text)
     if m:
         premise_summary = m.group(1).strip()
+
+    # Volumes
+    volumes = []
+    for vm_path_cand in [book_dir / "director" / "volume_map.md",
+                          book_dir / "story" / "outline" / "volume_map.md"]:
+        if vm_path_cand.exists():
+            volumes = parse_volume_map(vm_path_cand)
+            break
 
     return {
         "title": state.get("title", book_dir.name),
@@ -225,974 +354,1139 @@ def get_project_state(book_dir: Path) -> dict:
         "last_audit": last_audit,
         "chapters": queue,
         "chapter_files": [f.name for f in chapter_files],
-        "volumes": parse_volumes(book_dir),
+        "volumes": volumes,
         "hooks": hooks[:20],
         "hooks_total": len(hooks),
         "updated_at": state.get("updatedAt", ""),
     }
 
 
-def run_action(book_dir: Path, action: str) -> dict:
-    """Execute a director script action."""
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
-    book = str(book_dir)
-    scripts = SCRIPTS_DIR
+def _get_state_cached(book_dir: Path) -> dict:
+    """Return cached project state if fresh, otherwise recompute and cache."""
+    import time
+    key = str(book_dir.resolve())
+    now = time.time()
+    if key in _state_cache:
+        ts, data = _state_cache[key]
+        if now - ts < _STATE_CACHE_TTL:
+            return data
+    data = get_project_state(book_dir)
+    _state_cache[key] = (now, data)
+    # Prune old entries (keep max 10)
+    if len(_state_cache) > 10:
+        oldest = sorted(_state_cache.items(), key=lambda x: x[1][0])[:-10]
+        for k, _ in oldest:
+            _state_cache.pop(k, None)
+    return data
 
-    actions = {
-        "doctor": [sys.executable, str(scripts / "director_doctor.py"), book],
-        "review": [sys.executable, str(scripts / "outline_gate_review.py"), book],
-    }
 
-    if action.startswith("review_ch_"):
-        ch = action.replace("review_ch_", "")
-        # Find the actual chapter text file
-        ch_file = None
-        for ch_dir_name in ("正文", "chapters"):
-            ch_dir = book_dir / ch_dir_name
-            if ch_dir.exists():
-                candidates = sorted(ch_dir.glob(f"第*{ch.zfill(3)}*章*.md")) + sorted(ch_dir.glob(f"第*{ch}*章*.md"))
-                if not candidates:
-                    candidates = sorted(ch_dir.glob(f"第0*{ch}章*.md"))
-                if candidates:
-                    ch_file = str(candidates[0])
-                    break
-        cmd = [sys.executable, str(scripts / "review_chapter.py"), book, "--chapter", ch]
-        if ch_file:
-            cmd.extend(["--text", ch_file])
-        actions["review_chapter"] = cmd
-        action = "review_chapter"
-
-    if action not in actions:
-        return {"error": f"Unknown action: {action}"}
-
+def _spawn_script(cmd: list[Path | str], timeout: int = 60) -> dict:
+    """Run a Python script via subprocess and return structured result."""
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "PYTHONLEGACYWINDOWSSTDIO": "utf-8"}
     try:
-        result = subprocess.run(actions[action], capture_output=True, timeout=60, env=env)
+        result = subprocess.run([str(x) for x in cmd], capture_output=True, timeout=timeout, env=env)
         stdout = result.stdout.decode("utf-8", errors="replace")
         stderr = result.stderr.decode("utf-8", errors="replace")
-        output = (stdout + stderr)[:2000]
-
-        # review_chapter.py handles its own history write with issues — don't overwrite
-
         return {
-            "success": result.returncode in (0, 1),
+            "success": result.returncode == 0,
             "returncode": result.returncode,
-            "output": output,
+            "output": (stdout + stderr)[:2000],
         }
     except subprocess.TimeoutExpired:
-        return {"error": "Action timed out (60s)"}
+        return {"error": f"Action timed out ({timeout}s)"}
     except Exception as e:
         return {"error": str(e)}
 
 
-# ── HTML Template ──
+def _find_chapter_file(book_dir: Path, chapter: str) -> str | None:
+    """Find a chapter prose file by chapter number."""
+    for ch_dir_name in ("正文", "chapters", "story/chapters"):
+        ch_dir = book_dir / ch_dir_name
+        if ch_dir.exists():
+            for pat in [f"第*{chapter.zfill(3)}*章*.md", f"第*{chapter}*章*.md", f"第0*{chapter}章*.md"]:
+                candidates = sorted(ch_dir.glob(pat))
+                if candidates:
+                    return str(candidates[0])
+    return None
 
-HTML_TEMPLATE = r"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>网文导演仪表盘</title>
-<style>
-:root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #e6edf3; --muted: #8b949e; --accent: #3b82f6; --pass: #22c55e; --warn: #eab308; --fail: #ef4444; }
-[data-theme="light"] { --bg: #f6f8fa; --card: #ffffff; --border: #d0d7de; --text: #1f2328; --muted: #656d76; --accent: #0969da; --pass: #1a7f37; --warn: #9a6700; --fail: #cf222e; }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
-  background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.5; }
 
-/* Header */
-#header { background: var(--card); border-bottom: 1px solid var(--border);
-  padding: 12px 24px; display: flex; align-items: center; gap: 14px;
-  position: sticky; top: 0; z-index: 20; }
-#header h1 { font-size: 18px; font-weight: 700; }
-#header .status-block { padding: 4px 14px; border-radius: 6px; font-size: 12px;
-  font-weight: 600; white-space: nowrap; }
-#header .spacer { flex: 1; }
-#header .head-stat { font-size: 12px; color: var(--muted); }
-#header .head-stat b { color: var(--text); }
+def _do_write_flow(book_dir: Path, chapter: int) -> dict:
+    """Execute the full write flow: build -> write -> review -> writeback -> check queue -> extend."""
+    step_results: list[dict] = []
+    book = str(book_dir)
+    python = sys.executable
+    scripts = SCRIPTS_DIR
+    ch_str = str(chapter)
 
-/* Layout */
-#main { max-width: 1400px; margin: 0 auto; padding: 20px 24px;
-  display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
+    def _add_step(name: str, result: dict) -> None:
+        step_results.append({
+            "step": name,
+            "success": result.get("success", False),
+            "output": result.get("output", result.get("error", ""))[:500],
+        })
 
-/* Cards */
-.card { background: var(--card); border: 1px solid var(--border);
-  border-radius: 8px; padding: 16px; }
-.card h2 { font-size: 13px; color: var(--muted); letter-spacing: 0.5px;
-  margin-bottom: 12px; font-weight: 600; }
+    # Step a: build task package
+    result = _spawn_script(
+        [python, str(scripts / "build_task_package.py"), book, "--chapter", ch_str],
+        timeout=120)
+    _add_step("build", result)
+    if not result.get("success"):
+        return {"success": False, "chapter": chapter, "step_results": step_results,
+                "queue_remaining": -1, "queue_extended": False,
+                "error": "构建任务包失败: " + result.get("error", result.get("output", "未知错误"))}
 
-/* Action bar */
-#action-bar { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
-.btn { padding: 8px 16px; border: 1px solid var(--border); border-radius: 6px;
-  background: var(--card); color: var(--text); cursor: pointer; font-size: 13px;
-  font-weight: 500; transition: opacity 0.15s; }
-.btn:hover { opacity: 0.85; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    # Step b: write chapter
+    result = _spawn_script(
+        [python, str(scripts / "write_chapter.py"), book, "--chapter", ch_str],
+        timeout=300)
+    _add_step("write", result)
+    if not result.get("success"):
+        return {"success": False, "chapter": chapter, "step_results": step_results,
+                "queue_remaining": -1, "queue_extended": False,
+                "error": "写章失败: " + result.get("error", result.get("output", "未知错误"))}
 
-/* Table */
-#table-wrap { max-height: calc(100vh - 150px); overflow-y: auto; border-radius: 6px; }
-#chapter-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-#chapter-table th { text-align: center; padding: 8px 12px; color: var(--muted);
-  font-weight: 500; border-bottom: 2px solid var(--border); font-size: 11px;
-  letter-spacing: 0.5px; position: sticky; top: 0; background: var(--card); z-index: 1; }
-#chapter-table td { padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
-#chapter-table tbody tr { cursor: pointer; transition: background 0.1s; }
+    # Step c: review chapter (find the chapter file first)
+    ch_file = _find_chapter_file(book_dir, ch_str)
+    review_cmd = [python, str(scripts / "review_chapter.py"), book, "--chapter", ch_str]
+    if ch_file:
+        review_cmd.extend(["--text", ch_file])
+    result = _spawn_script(review_cmd, timeout=120)
+    _add_step("review", result)
+    if not result.get("success"):
+        return {"success": False, "chapter": chapter, "step_results": step_results,
+                "queue_remaining": -1, "queue_extended": False,
+                "error": "审查失败: " + result.get("error", result.get("output", "未知错误"))}
 
-.vol-band-even { background: rgba(255,255,255,0.02); }
-.vol-band-odd { background: rgba(99,102,241,0.04); }
-#chapter-table tbody tr:hover { background: rgba(255,255,255,0.03); }
-#chapter-table .ch-col { font-weight: 600; width: 36px; text-align: left; }
-#chapter-table .title-col { width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-#chapter-table .words-col { text-align: center; font-variant-numeric: tabular-nums;
-  font-size: 12px; color: var(--muted); width: 80px; }
-#chapter-table .score-col { text-align: center; font-weight: 700; width: 44px; }
-#chapter-table .time-col { width: 80px; font-size: 11px; color: var(--muted); white-space: nowrap; text-align: center; }
-#chapter-table .status-col { width: 55px; font-size: 12px; font-weight: 600; text-align: center; }
-#chapter-table .review-col { width: 36px; text-align: center; }
+    # Step d: post writeback (always PASS for auto flow)
+    result = _spawn_script(
+        [python, str(scripts / "post_writeback.py"), book,
+         "--chapter", ch_str, "--audit", "PASS", "--summary", "", "--write", "--json"],
+        timeout=120)
+    _add_step("writeback", result)
 
-/* Filter row */
-.filter-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-.filter-row select { background: var(--card); color: var(--text);
-  border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+    # Step e: check queue remaining (count chapters with status "待写")
+    queue_path = book_dir / "director" / "chapter_queue.md"
+    queue_remaining = 0
+    if queue_path.exists():
+        queue = parse_chapter_queue(queue_path)
+        pending_statuses = {"待写", "NEEDS_WRITING", "NEEDS WRITING"}
+        queue_remaining = sum(
+            1 for c in queue
+            if (c.get("status", "") or "").upper().replace(" ", "_") in
+               {s.upper().replace(" ", "_") for s in pending_statuses}
+        )
 
-/* Sidebar */
-#sidebar { display: flex; flex-direction: column; gap: 16px; }
-.progress-bg { height: 6px; background: var(--border); border-radius: 3px;
-  margin: 8px 0 12px; overflow: hidden; }
-.progress-fill { height: 100%; background: var(--accent); border-radius: 3px;
-  transition: width 0.5s ease; }
-.stat-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
-.stat-row .val { font-weight: 600; }
-.audit-entry { font-size: 12px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
-.audit-entry .time { color: var(--muted); font-size: 11px; }
-.blocker-item { padding: 3px 0; font-size: 12px; color: var(--fail); }
+    # Step f: extend outline if < 5 chapters remaining
+    queue_extended = False
+    if queue_remaining < 5:
+        ext_result = _spawn_script(
+            [python, str(scripts / "generate_outline_queue.py"), book,
+             "--chapters", "5", "--llm"],
+            timeout=180)
+        _add_step("extend_outline", ext_result)
+        queue_extended = ext_result.get("success", False)
 
-/* Output panel */
-#output { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-  padding: 10px; font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
-  font-size: 12px; height: 500px; overflow-y: auto; white-space: pre-wrap;
-  margin-top: 16px; color: var(--muted); }
-
-/* Modal */
-#modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
-#modal-overlay.show { display: flex; }
-#modal-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-  padding: 24px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; }
-#modal-box h3 { font-size: 16px; margin-bottom: 6px; }
-#modal-box .meta { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
-#modal-box .field { margin-bottom: 12px; }
-#modal-box .field-label { font-size: 11px; color: var(--muted); letter-spacing: 0.5px;
-  margin-bottom: 4px; font-weight: 500; }
-#modal-box .field-value { font-size: 13px; line-height: 1.5; }
-#modal-box .close-btn { float: right; background: none; border: none; color: var(--muted);
-  font-size: 22px; cursor: pointer; line-height: 1; }
-#modal-box textarea { width: 100%; min-height: 60px; background: var(--bg);
-  color: var(--text); border: 1px solid var(--border); border-radius: 6px;
-  padding: 8px; font-size: 13px; resize: vertical; font-family: inherit; }
-
-/* Misc */
-.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
-  border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite;
-  vertical-align: middle; margin-right: 6px; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.refresh-indicator { font-size: 11px; color: var(--muted); white-space: nowrap; }
-</style>
-</head>
-<body>
-
-<header id="header">
-  <h1 id="h-title">载入中...</h1>
-  <div class="status-block" id="h-status" style="background:rgba(107,114,128,0.15)">--</div>
-  <div class="spacer"></div>
-  <div class="header-progress">
-    <div>
-      <div class="progress-bg" style="height:4px;width:240px;display:flex">
-        <div class="progress-fill" id="header-progress" style="width:0%;background:var(--accent);border-radius:3px 0 0 3px"></div>
-        <div class="progress-fill" id="header-progress-queue" style="width:0%;background:#eab308;border-radius:0"></div>
-      </div>
-      <span style="font-size:12px;color:var(--muted);white-space:nowrap" id="header-progress-text">-</span>
-    </div>
-  </div>
-  <div class="header-stats">
-    <span class="header-stat-item">&#9888; <b id="h-warn">0</b></span>
-    <span class="header-stat-item">&#10060; <b id="h-fail">0</b></span>
-    <span class="header-stat-item">&#128221; <b id="h-canwrite">-</b></span>
-  </div>
-  <span class="refresh-indicator" style="margin-left: 10px" id="refresh-hint"></span>
-  <button onclick="toggleTheme()" style="margin-left:10px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px" title="切换主题">&#9788;</button>
-</header>
-
-<div id="main">
-  <div>
-    <!-- Action bar -->
-    <div id="action-bar">
-      <button class="btn primary" onclick="doAction('doctor')">一键体检</button>
-      <button class="btn" onclick="doAction('review')">大纲审查</button>
-      <button class="btn" onclick="refresh()">刷新</button>
-      <span style="flex:1"></span>
-      <button class="btn" onclick="exportTable()" style="font-size:12px">导出</button>
-    </div>
-
-    <!-- Chapter table -->
-    <div class="card" style="padding:12px">
-      <div class="filter-row">
-        <h2 style="margin:0;flex:1">章节状态</h2>
-        <select id="vol-select" onchange="switchVolume()"></select>
-        <select id="status-filter" onchange="applyFilter()">
-          <option value="">全部</option>
-          <option value="written">已写</option>
-          <option value="pass">通过</option>
-          <option value="warn">警告</option>
-          <option value="fail">失败</option>
-          <option value="queue">待写</option>
-        </select>
-      </div>
-      <div id="table-wrap">
-        <table id="chapter-table">
-          <thead><tr>
-            <th class="ch-col">#</th>
-            <th class="title-col">标题</th>
-            <th class="words-col" id="th-words">字数</th>
-            <th class="score-col">评分</th>
-            <th class="time-col">修改时间</th>
-            <th class="status-col">审查</th>
-            <th class="time-col">审查时间</th>
-            <th class="review-col"></th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- Sidebar -->
-  <div id="sidebar">
-    <div class="card">
-      <h2>审查统计</h2>
-      <div class="stat-row"><span>PASS</span><span class="val" style="color:var(--pass)" id="sb-pass">0</span></div>
-      <div class="stat-row"><span>WARN</span><span class="val" style="color:var(--warn)" id="sb-warn">0</span></div>
-      <div class="stat-row"><span>FAIL</span><span class="val" style="color:var(--fail)" id="sb-fail">0</span></div>
-      <div class="stat-row"><span>待审</span><span class="val" id="sb-pending">0</span></div>
-    </div>
-
-    <div class="card">
-      <h2>最近审计</h2>
-      <div id="sb-audit"><span style="color:var(--muted);font-size:12px">--</span></div>
-    </div>
-
-    <div id="output">-- 就绪 --</div>
-  </div>
-</div>
-
-<!-- Chapter Detail Modal -->
-<div id="modal-overlay" onclick="if(event.target===this)closeModal()">
-  <div id="modal-box">
-    <button class="close-btn" onclick="closeModal()">&times;</button>
-    <h3 id="modal-title"></h3>
-    <div class="meta" id="modal-meta"></div>
-    <div class="field">
-      <div class="field-label">章节目标 Goal</div>
-      <div class="field-value" id="modal-goal"></div>
-      <textarea id="modal-goal-edit" style="display:none"></textarea>
-    </div>
-    <div class="field">
-      <div class="field-label">命题兑现 Must Hit</div>
-      <div class="field-value" id="modal-premise"></div>
-      <textarea id="modal-premise-edit" style="display:none"></textarea>
-    </div>
-    <div class="field">
-      <div class="field-label">禁飞区 Forbidden</div>
-      <div class="field-value" id="modal-forbidden"></div>
-      <textarea id="modal-forbidden-edit" style="display:none"></textarea>
-    </div>
-    <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center;">
-      <button class="btn" id="modal-edit-btn" onclick="startEdit()">编辑</button>
-      <button class="btn primary" id="modal-save-btn" onclick="saveEdit()" style="display:none">保存</button>
-      <button class="btn" id="modal-cancel-btn" onclick="cancelEdit()" style="display:none">取消</button>
-      <span style="font-size: 11px; color: var(--muted);" id="modal-save-status"></span>
-    </div>
-  </div>
-</div>
-
-<script>
-const STATE = {};
-let currentVolume = 0;
-let countdown = 30;
-let editingChapter = 0;
-
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-function toggleTheme() {
-  var t = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', t);
-  localStorage.setItem('theme', t);
-}
-(function() {
-  var t = localStorage.getItem('theme') || 'dark';
-  document.documentElement.setAttribute('data-theme', t);
-})();
-
-function calcScore(c) {
-  // No score for unreviewed chapters
-  if (!c.review_verdict) return {grade:'', color:'#6b7280'};
-  let s = 0;
-  if (c.words > 0) s++;
-  if (c.goal && c.goal.length > 3 && c.goal !== '未设定') s++;
-  if (c.premise_hit && c.premise_hit.length > 3 && c.premise_hit !== '未设定') s++;
-  if (c.review_verdict === 'PASS') s += 2;
-  else if (c.review_verdict === 'WARN') s++;
-  if (s >= 5) return {grade:'A', color:'#22c55e'};
-  if (s >= 4) return {grade:'B', color:'#10b981'};
-  if (s >= 3) return {grade:'C', color:'#eab308'};
-  if (s >= 2) return {grade:'D', color:'#f97316'};
-  return {grade:'', color:'#6b7280'};
-}
-
-function renderTable(chapters, volumes) {
-  return chapters.map(c => {
-    const sc = calcScore(c);
-    var rawTitle = c.title || ('第' + c.chapter + '章');
-    // Truncate long titles for display
-    var title = rawTitle.length > 12 ? rawTitle.substring(0, 12) + '…' : rawTitle;
-    const words = (c.words || 0);
-    // Volume band
-    var volIdx = -1;
-    if (volumes) {
-      for (var vi = 0; vi < volumes.length; vi++) {
-        if (c.chapter >= volumes[vi].start && c.chapter <= volumes[vi].end) { volIdx = vi; break; }
-      }
+    return {
+        "success": True,
+        "chapter": chapter,
+        "step_results": step_results,
+        "queue_remaining": queue_remaining,
+        "queue_extended": queue_extended,
     }
-    var bandClass = volIdx >= 0 ? (volIdx % 2 === 0 ? 'vol-band-even' : 'vol-band-odd') : '';
-    const mtime = c.mtime || '-';
-    const rvVerdict = c.review_verdict || '';
-    const rvTime = c.reviewed_at || '-';
-    const verdictColors = {PASS:'#22c55e',WARN:'#eab308',FAIL:'#ef4444'};
-    const vLabel = {PASS:'通过',WARN:'警告',FAIL:'失败'};
-    return `<tr class="${bandClass}" onclick="showDetail(${c.chapter})">
-      <td class="ch-col">${c.chapter}</td>
-      <td class="title-col" title="${esc(title)}">${esc(title)}</td>
-      <td class="words-col">${words || '-'}</td>
-      <td class="score-col" style="color:${sc.color}">${sc.grade}</td>
-      <td class="time-col">${mtime}</td>
-      <td class="status-col" style="color:${verdictColors[rvVerdict]||'var(--muted)'}">${rvVerdict ? (vLabel[rvVerdict]||rvVerdict) : (words > 0 ? '已写' : '-')}</td>
-      <td class="time-col">${rvTime}</td>
-      <td class="review-col"><button onclick="event.stopPropagation();doAction('review_ch_${c.chapter}')" style="padding:2px 6px;font-size:11px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer;width:32px">审</button></td>
-    </tr>`;
-  }).join('');
-}
-
-function render(data) {
-  Object.assign(STATE, data);
-  const s = STATE;
-
-  // Header
-  document.getElementById('h-title').textContent = s.title || '未命名项目';
-
-  const la = s.last_audit || {};
-  const ast = la.status || 'NONE';
-  const stColors = {PASS: 'rgba(34,197,94,0.18)', WARN: 'rgba(234,179,8,0.18)',
-                    FAIL: 'rgba(239,68,68,0.18)', NONE: 'rgba(107,114,128,0.12)'};
-  const stText = {PASS: '#22c55e', WARN: '#eab308', FAIL: '#ef4444', NONE: '#8b949e'};
-  const stLabels = {PASS: '审计通过', WARN: '审计警告', FAIL: '审计失败', NONE: '未审计'};
-  const hSt = document.getElementById('h-status');
-  hSt.textContent = stLabels[ast] || ast;
-  hSt.style.background = stColors[ast] || stColors.NONE;
-  hSt.style.color = stText[ast] || stText.NONE;
-
-  // Define allCh early (used by progress, stats, audits)
-  var allCh = s.chapters || [];
-
-  // Volume selector
-  const totalBookCh = (s.volumes || []).reduce(function(sum, v) { return sum + v.chapters; }, 0) || s.total_chapters_planned;
-  document.getElementById('vol-select').innerHTML = '<option value="0">全部卷</option>' +
-    (s.volumes || []).map(function(v) {
-      return '<option value="' + v.start + '" ' + (currentVolume === v.start ? 'selected' : '') + '>第' + v.label + '卷 ' + v.start + '-' + v.end + '章 ' + (v.theme || '') + '</option>';
-    }).join('');
-
-  // Filter chapters
-  var chapters = s.chapters || [];
-  if (currentVolume > 0) {
-    var vol = (s.volumes || []).find(function(v) { return v.start === currentVolume; });
-    if (vol) chapters = chapters.filter(function(c) { return c.chapter >= vol.start && c.chapter <= vol.end; });
-  }
-  var sf = document.getElementById('status-filter').value;
-  if (sf) {
-    chapters = chapters.filter(function(c) {
-      var ns = (c.status || '').toUpperCase();
-      if (sf === 'written') return c.words > 0 && !c.review_verdict;
-      if (sf === 'pass') return c.review_verdict === 'PASS';
-      if (sf === 'warn') return c.review_verdict === 'WARN';
-      if (sf === 'fail') return c.review_verdict === 'FAIL';
-      if (sf === 'queue') return !c.words || (c.words === 0 && !c.review_verdict);
-      return true;
-    });
-  }
-
-  // Chapter table
-  document.querySelector('#chapter-table tbody').innerHTML = renderTable(chapters.slice(0, 60), s.volumes);
-
-  // Header progress bar
-  var planned = totalBookCh, written = s.total_chapters_written;
-  if (currentVolume > 0) {
-    var cv = (s.volumes || []).find(function(v) { return v.start === currentVolume; });
-    if (cv) { planned = cv.chapters; written = chapters.filter(function(c) { return c.words > 0; }).length; }
-  }
-  var pct = planned > 0 ? Math.round(written / planned * 100) : 0;
-  var queuedChapters = allCh.length;  // total chapters in queue
-  var queueOnly = queuedChapters - written;  // queue only (not written)
-  var queuePct = planned > 0 ? Math.round(queueOnly / planned * 100) : 0;
-  document.getElementById('header-progress').style.width = pct + '%';
-  document.getElementById('header-progress-queue').style.width = queuePct + '%';
-  document.getElementById('header-progress-text').textContent = '已写/细纲/全部 ' + written + '/' + queuedChapters + '/' + planned + ' (' + pct + '%) ' + '字数' + ((s.total_chars || 0) / 10000).toFixed(1) + '万字';
-
-  // Sidebar: review stats
-  document.getElementById('sb-pass').textContent = allCh.filter(function(c) { return c.review_verdict === 'PASS'; }).length;
-  document.getElementById('sb-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
-  document.getElementById('sb-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
-  document.getElementById('sb-pending').textContent = allCh.filter(function(c) { return c.words > 0 && !c.review_verdict; }).length;
-
-  // Header stats
-  document.getElementById('h-warn').textContent = allCh.filter(function(c) { return c.review_verdict === 'WARN'; }).length;
-  document.getElementById('h-fail').textContent = allCh.filter(function(c) { return c.review_verdict === 'FAIL'; }).length;
-  var pending = allCh.filter(function(c) { return !c.words || c.words === 0; }).length;
-  document.getElementById('h-canwrite').textContent = pending;
-
-  // Average words in table header
-  var totalWords = allCh.reduce(function(sum, c) { return sum + (c.words || 0); }, 0);
-  var avgWords = written > 0 ? Math.round(totalWords / written) : 0;
-  document.getElementById('th-words').textContent = '字数（均' + avgWords + '字）';
-
-  // Sidebar: recent audits
-  var audDiv = document.getElementById('sb-audit');
-  var html = '';
-  // Show last_audit first
-  if (la.status && la.status !== 'NONE') {
-    var vc = {PASS: '#22c55e', WARN: '#eab308', FAIL: '#ef4444'};
-    html += '<div style="font-size:13px;font-weight:600;color:' + (vc[la.status] || 'var(--muted)') + ';margin-bottom:4px">' + (la.status === 'PASS' ? '审计通过' : la.status === 'WARN' ? '审计警告' : '审计失败') + '</div>';
-    if (la.summary) {
-      html += '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.4">' + esc(la.summary.substring(0, 120)) + '</div>';
-    }
-  }
-  // Show latest chapter reviews
-  var reviewed = allCh.filter(function(c) { return c.reviewed_at; }).sort(function(a, b) {
-    return (b.reviewed_at || '').localeCompare(a.reviewed_at || '');
-  }).slice(0, 5);
-  if (reviewed.length > 0) {
-    html += reviewed.map(function(c) {
-      var vc = {PASS: '#22c55e', WARN: '#eab308', FAIL: '#ef4444'};
-      return '<div style="font-size:11px;padding:1px 0"><span style="color:' + (vc[c.review_verdict] || 'var(--muted)') + '">' + (c.review_verdict || '?') + '</span> Ch' + c.chapter + ' <span style="color:var(--muted)">' + (c.reviewed_at || '') + '</span></div>';
-    }).join('');
-  }
-  audDiv.innerHTML = html || '<span style="color:var(--muted);font-size:12px">暂无</span>';
-
-  // Sidebar: blockers
-  var bl = document.getElementById('sb-blockers');
-  if (bl) {
-  if ((s.blockers || []).length > 0) {
-    bl.innerHTML = s.blockers.map(function(b) { return '<div class="blocker-item">' + esc(b) + '</div>'; }).join('');
-  } else {
-    bl.innerHTML = '<span style="color:var(--pass);font-size:12px">无阻塞项</span>';
-  }
-  }
-
-  // Refresh indicator
-  document.getElementById('refresh-hint').textContent = countdown + 's 刷新';
-}
-
-// Actions
-async function refresh() {
-  try {
-    const r = await fetch('/api/state');
-    render(await r.json());
-  } catch(e) { console.error(e); }
-}
-
-async function doAction(action) {
-  const out = document.getElementById('output');
-  out.textContent = '执行中...';
-
-  try {
-    const r = await fetch('/api/action/' + action);
-    const d = await r.json();
-    out.textContent = d.output || d.error || '完成';
-
-    if (action.startsWith('review_ch_')) {
-      const chNum = parseInt(action.replace('review_ch_', ''));
-      const m = (d.output || '').match(/结论[：:]\s*(PASS|WARN|FAIL)/);
-      if (m) {
-        const ch = (STATE.chapters || []).find(c => c.chapter === chNum);
-        if (ch) {
-          const now = new Date();
-          ch.reviewed_at = (now.getMonth()+1).toString().padStart(2,'0') + '-' +
-                           now.getDate().toString().padStart(2,'0') + ' ' +
-                           now.getHours().toString().padStart(2,'0') + ':' +
-                           now.getMinutes().toString().padStart(2,'0') + ':' +
-                           now.getSeconds().toString().padStart(2,'0');
-          ch.review_verdict = m[1];
-          const issues = [];
-          for (const line of (d.output || '').split('\n')) {
-            const im = line.match(/(?:WARN|FAIL)\s+\[(.+?)\]\s*(?:—|:)?\s*(.+)/);
-            if (im) issues.push('[' + im[1] + '] ' + im[2].trim());
-          }
-          ch.review_issues = issues;
-          // Persist to server (await to avoid loss on refresh)
-          try {
-            await fetch('/api/save_review', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({
-                chapter: chNum,
-                verdict: m[1],
-                time: ch.reviewed_at,
-                issues: issues
-              })
-            });
-          } catch(e) { console.error('Save review failed:', e); }
-        }
-        render(STATE);
-      }
-    } else if (d.success) {
-      setTimeout(refresh, 2000);
-    }
-  } catch(e) {
-    out.textContent = '错误: ' + e.message;
-  }
-}
-
-function switchVolume() {
-  currentVolume = parseInt(document.getElementById('vol-select').value) || 0;
-  applyFilter();
-}
-
-function applyFilter() { render(STATE); }
-
-// Modal
-function showDetail(chNum) {
-  const ch = (STATE.chapters || []).find(c => c.chapter === chNum);
-  if (!ch) return;
-  editingChapter = chNum;
-  document.getElementById('modal-title').textContent = '第' + ch.chapter + '章 ' + (ch.title || '');
-  document.getElementById('modal-meta').textContent =
-    '字数: ' + ((ch.words || 0) / 1000).toFixed(1) + 'k' +
-    ' | 审查: ' + (ch.review_verdict || '未审') +
-    (ch.reviewed_at ? ' | ' + ch.reviewed_at : '');
-  renderReadOnly(ch);
-  document.getElementById('modal-overlay').classList.add('show');
-}
-
-function closeModal() { document.getElementById('modal-overlay').classList.remove('show'); }
-
-function renderReadOnly(ch) {
-  document.getElementById('modal-goal').style.display = 'block';
-  document.getElementById('modal-goal-edit').style.display = 'none';
-  document.getElementById('modal-premise').style.display = 'block';
-  document.getElementById('modal-premise-edit').style.display = 'none';
-  document.getElementById('modal-forbidden').style.display = 'block';
-  document.getElementById('modal-forbidden-edit').style.display = 'none';
-  document.getElementById('modal-goal').textContent = ch.goal || '未设定';
-  document.getElementById('modal-premise').textContent = ch.premise_hit || '未设定';
-  document.getElementById('modal-forbidden').textContent = ch.forbidden || '无';
-  document.getElementById('modal-edit-btn').style.display = 'inline-block';
-  document.getElementById('modal-save-btn').style.display = 'none';
-  document.getElementById('modal-cancel-btn').style.display = 'none';
-  document.getElementById('modal-save-status').textContent = '';
-}
-
-function startEdit() {
-  const ch = (STATE.chapters || []).find(c => c.chapter === editingChapter);
-  if (!ch) return;
-  document.getElementById('modal-goal').style.display = 'none';
-  document.getElementById('modal-goal-edit').style.display = 'block';
-  document.getElementById('modal-goal-edit').value = ch.goal || '';
-  document.getElementById('modal-premise').style.display = 'none';
-  document.getElementById('modal-premise-edit').style.display = 'block';
-  document.getElementById('modal-premise-edit').value = ch.premise_hit || '';
-  document.getElementById('modal-forbidden').style.display = 'none';
-  document.getElementById('modal-forbidden-edit').style.display = 'block';
-  document.getElementById('modal-forbidden-edit').value = ch.forbidden || '';
-  document.getElementById('modal-edit-btn').style.display = 'none';
-  document.getElementById('modal-save-btn').style.display = 'inline-block';
-  document.getElementById('modal-cancel-btn').style.display = 'inline-block';
-}
-
-function cancelEdit() {
-  const ch = (STATE.chapters || []).find(c => c.chapter === editingChapter);
-  if (ch) renderReadOnly(ch);
-}
-
-async function saveEdit() {
-  const goal = document.getElementById('modal-goal-edit').value;
-  const premise = document.getElementById('modal-premise-edit').value;
-  const forbidden = document.getElementById('modal-forbidden-edit').value;
-  const st = document.getElementById('modal-save-status');
-  st.textContent = '保存中...';
-  try {
-    const r = await fetch('/api/save_chapter', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({chapter: editingChapter, goal, premise_hit: premise, forbidden})
-    });
-    const d = await r.json();
-    if (d.success) {
-      const ch = (STATE.chapters || []).find(c => c.chapter === editingChapter);
-      if (ch) { ch.goal = goal; ch.premise_hit = premise; ch.forbidden = forbidden; }
-      renderReadOnly(ch || {});
-      refresh();
-      st.textContent = '已保存';
-      setTimeout(function() { st.textContent = ''; }, 2000);
-    } else {
-      st.textContent = '失败: ' + (d.error || '');
-    }
-  } catch(e) {
-    st.textContent = '错误: ' + e.message;
-  }
-}
-
-function exportTable() {
-  var chapters = (STATE.chapters || []).filter(function(c) {
-    if (currentVolume > 0) {
-      var vol = (STATE.volumes || []).find(function(v) { return v.start === currentVolume; });
-      if (vol && (c.chapter < vol.start || c.chapter > vol.end)) return false;
-    }
-    return true;
-  });
-  var rows = [['章','标题','字数','Goal','Premise Hit','状态']];
-  for (var i = 0; i < chapters.length && i < 80; i++) {
-    var c = chapters[i];
-    rows.push([c.chapter, c.title||'', ((c.words||0)/1000).toFixed(1)+'k',
-               (c.goal||'').substring(0,50), (c.premise_hit||'').substring(0,50),
-               c.status||'QUEUE']);
-  }
-  var text = rows.map(function(r) { return r.join('\t'); }).join('\n');
-  navigator.clipboard.writeText(text).catch(function() {});
-}
-
-// Countdown tick
-setInterval(function() {
-  countdown--;
-  if (countdown <= 0) countdown = 30;
-  var el = document.getElementById('refresh-hint');
-  if (el) el.textContent = countdown + 's 刷新';
-}, 1000);
-
-// Init on DOMContentLoaded (not direct call)
-async function init() {
-  try {
-    const r = await fetch('/api/state');
-    const data = await r.json();
-    countdown = 30;
-    render(data);
-    setInterval(async function() {
-      try {
-        countdown = 30;
-        const r2 = await fetch('/api/state');
-        render(await r2.json());
-      } catch(e) { console.error(e); }
-    }, 30000);
-  } catch(e) { console.error(e); }
-}
-document.addEventListener('DOMContentLoaded', init);
-</script>
-</body>
-</html>"""
 
 
-def save_review_history(book_dir: Path, data: dict) -> dict:
-    """Save chapter review result to .review_history.json"""
-    rh_path = book_dir / "director" / ".review_history.json"
-    rh = {}
-    if rh_path.exists():
+# Provider presets — loaded from config.yaml at startup
+_provider_presets: list[dict] = []
+
+
+def _load_presets() -> list[dict]:
+    """Load provider presets from config.yaml."""
+    try:
+        import yaml
+        cfg_path = SKILL_ROOT / "config.yaml"
+        if cfg_path.exists():
+            cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+            return cfg.get("provider_presets", [])
+    except Exception:
+        pass
+    return []
+
+
+def _try_verify_at(base_url: str, api_key: str) -> dict | None:
+    """Try to verify a key at a given base_url. Returns result dict or None."""
+    import urllib.request as ur
+    # Normalize base_url: strip trailing slash, ensure /v1 if it's chat-compatible
+    url = base_url.rstrip("/")
+    models_url = f"{url}/models"
+    try:
+        req = ur.Request(models_url, headers={"Authorization": f"Bearer {api_key}"})
+        with ur.urlopen(req, timeout=8) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read())
+                models_raw = data.get("data", [])
+                models = []
+                for m in models_raw:
+                    mid = (m.get("id") or "").strip()
+                    if mid and isinstance(mid, str):
+                        models.append(mid)
+                # Keep chat/completion models at top
+                preferred = [m for m in models if "chat" in m.lower() or "reasoner" in m.lower() or "instruct" in m.lower()]
+                others = [m for m in models if m not in preferred]
+                models = preferred + others
+                return {"models": models[:30], "base_url": base_url}
+    except ur.HTTPError as e:
+        return None
+    except Exception:
+        return None
+
+
+def _verify_api_key(api_key: str, base_url: str = "", _provider_hint: str = "") -> dict:
+    """Verify an API key at a custom base_url, or auto-detect across presets.
+
+    If base_url is given, verify only at that URL.
+    Otherwise, try all preset providers in order.
+    """
+    import urllib.request as ur
+
+    if base_url:
+        result = _try_verify_at(base_url, api_key)
+        if result:
+            return {
+                "success": True,
+                "message": "API Key 有效",
+                "provider": "custom",
+                "label": base_url.rstrip("/"),
+                "base_url": base_url,
+                "models": result["models"],
+            }
+        # Try one more: some APIs use a different models path
         try:
-            rh = json.loads(read(rh_path))
-        except json.JSONDecodeError:
+            url = base_url.rstrip("/")
+            req = ur.Request(f"{url}/v1/models", headers={"Authorization": f"Bearer {api_key}"})
+            with ur.urlopen(req, timeout=8) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read())
+                    models = []
+                    for m in data.get("data", []):
+                        mid = (m.get("id") or "").strip()
+                        if mid:
+                            models.append(mid)
+                    return {
+                        "success": True,
+                        "message": "API Key 有效",
+                        "provider": "custom",
+                        "label": base_url.rstrip("/"),
+                        "base_url": base_url,
+                        "models": models[:30],
+                    }
+        except Exception:
             pass
-    ch = str(data.get("chapter", ""))
-    rh[ch] = {
-        "time": data.get("time", ""),
-        "verdict": data.get("verdict", ""),
-        "issues": data.get("issues", []),
+        return {"success": False, "error": "自定义端点验证失败，请检查 base_url 和 API Key"}
+
+    # Auto-detect across presets
+    presets = _load_presets()
+    if not presets:
+        presets = [{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deepseek.com/v1"}]
+
+    errors = []
+    for p in presets:
+        pid = p.get("id", "")
+        plabel = p.get("label", pid)
+        pbase = p.get("base_url", "")
+        if not pbase or pid == "custom":
+            continue
+        result = _try_verify_at(pbase, api_key)
+        if result:
+            return {
+                "success": True,
+                "message": f"{plabel} API Key 有效",
+                "provider": pid,
+                "label": plabel,
+                "base_url": pbase,
+                "models": result["models"],
+            }
+        errors.append(f"{plabel}: 401/error")
+
+    return {"success": False, "error": "Key 无效，所有厂商均返回 401", "details": errors}
+
+
+def _start_batch_write(book_dir: Path, chapter_start: int, count: int) -> str:
+    """Start a batch write job. Returns job_id for polling."""
+    job_id = uuid.uuid4().hex[:12]
+    with _batch_jobs_lock:
+        _batch_jobs[job_id] = {
+            "status": "running",
+            "job_id": job_id,
+            "chapter_start": chapter_start,
+            "count": count,
+            "completed": 0,
+            "failed": 0,
+            "current_chapter": chapter_start,
+            "results": [],
+            "started_at": datetime.datetime.now().isoformat(),
+        }
+
+    def _bg_batch():
+        for i in range(count):
+            ch = chapter_start + i
+            with _batch_jobs_lock:
+                _batch_jobs[job_id]["current_chapter"] = ch
+            result = _do_write_flow(book_dir, ch)
+            with _batch_jobs_lock:
+                _batch_jobs[job_id]["results"].append({
+                    "chapter": ch,
+                    "success": result.get("success", False),
+                    "step_results": result.get("step_results", []),
+                    "queue_remaining": result.get("queue_remaining", -1),
+                    "queue_extended": result.get("queue_extended", False),
+                    "error": result.get("error", ""),
+                })
+                if result.get("success"):
+                    _batch_jobs[job_id]["completed"] += 1
+                else:
+                    _batch_jobs[job_id]["failed"] += 1
+
+        with _batch_jobs_lock:
+            _batch_jobs[job_id]["status"] = "done"
+            _batch_jobs[job_id]["finished_at"] = datetime.datetime.now().isoformat()
+
+        # Clean up old jobs
+        with _batch_jobs_lock:
+            keys = list(_batch_jobs.keys())
+            if len(keys) > 20:
+                for old_key in keys[:-20]:
+                    _batch_jobs.pop(old_key, None)
+
+    threading.Thread(target=_bg_batch, daemon=True).start()
+    return job_id
+
+
+def _run_parallel_review(book_dir: Path, vol_str: str) -> dict:
+    """Run review_parallel.py for all written chapters in a volume."""
+    try:
+        vol_num = int(vol_str)
+    except ValueError:
+        return {"success": False, "error": f"无效卷号: {vol_str}"}
+
+    volumes = parse_volume_map(book_dir / "director" / "volume_map.md")
+    target_vol = None
+    for v in volumes:
+        if v["volume"] == vol_num:
+            target_vol = v
+            break
+    if not target_vol:
+        return {"success": False, "error": f"未找到第{vol_num}卷"}
+
+    # Find written chapters in this volume
+    chapter_files = []
+    for ch_dir_name in ("正文", "chapters", "story/chapters"):
+        ch_dir = book_dir / ch_dir_name
+        if ch_dir.exists():
+            for f in sorted(ch_dir.glob("*.md")):
+                m = re.match(r"第0*(\d+)章", f.name)
+                if m:
+                    ch_num = int(m.group(1))
+                    if target_vol["start"] <= ch_num <= target_vol["end"]:
+                        chapter_files.append((ch_num, str(f)))
+
+    if not chapter_files:
+        return {"success": False, "error": f"第{vol_num}卷内没有已写章节"}
+
+    results = []
+    passed = 0
+    failed = 0
+    for ch_num, ch_file in sorted(chapter_files):
+        # Step 1: build task package (required by review_parallel, but may fail for already-written chapters)
+        build_result = _spawn_script(
+            [sys.executable, str(SCRIPTS_DIR / "build_task_package.py"), str(book_dir),
+             "--chapter", str(ch_num)],
+            timeout=60)
+
+        # Step 2: run review — use review_parallel if build succeeded, otherwise fall back to review_chapter
+        if build_result.get("success"):
+            r = _spawn_script(
+                [sys.executable, str(SCRIPTS_DIR / "review_parallel.py"), str(book_dir),
+                 "--chapter", str(ch_num), "--text", ch_file, "--json"],
+                timeout=180)
+        else:
+            # Fallback: review_chapter.py only needs --text, no task package required
+            r = _spawn_script(
+                [sys.executable, str(SCRIPTS_DIR / "review_chapter.py"), str(book_dir),
+                 "--chapter", str(ch_num), "--text", ch_file],
+                timeout=120)
+        verdict = "?"
+        if r.get("output"):
+            # Try JSON parse first (--json flag)
+            try:
+                parsed = json.loads(r["output"])
+                verdict = parsed.get("status", "?")
+            except json.JSONDecodeError:
+                m = re.search(r"结论[：:]\s*(PASS|WARN|FAIL)", r["output"])
+                if m:
+                    verdict = m.group(1)
+        results.append({"chapter": ch_num, "verdict": verdict, "success": r.get("success", False)})
+        if verdict == "PASS":
+            passed += 1
+        else:
+            failed += 1
+
+    return {
+        "success": True,
+        "volume": vol_num,
+        "total": len(results),
+        "passed": passed,
+        "failed": failed,
+        "results": results,
+        "output": "\n".join(
+            f"Ch{r['chapter']:03d}: {r['verdict']}" for r in results
+        ),
     }
-    rh_path.write_text(json.dumps(rh, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"success": True}
 
 
-def save_chapter_queue(book_dir: Path, data: dict) -> dict:
-    """Update a single chapter's row in chapter_queue.md."""
+def run_action(book_dir: Path, action: str) -> dict:
+    """Execute a director script action."""
+    book = str(book_dir)
+    scripts = SCRIPTS_DIR
+
+    if action.startswith("review_ch_"):
+        ch = action.replace("review_ch_", "")
+        ch_file = None
+        for ch_dir_name in ("正文", "chapters", "story/chapters"):
+            ch_dir = book_dir / ch_dir_name
+            if ch_dir.exists():
+                for pat in [f"第*{ch.zfill(3)}*章*.md", f"第*{ch}*章*.md", f"第0*{ch}章*.md"]:
+                    candidates = sorted(ch_dir.glob(pat))
+                    if candidates:
+                        ch_file = str(candidates[0])
+                        break
+        cmd = [sys.executable, str(scripts / "review_chapter.py"), book, "--chapter", ch]
+        if ch_file:
+            cmd.extend(["--text", ch_file])
+        return _spawn_script(cmd)
+
+    if action.startswith("generate_queue_"):
+        parts = action.replace("generate_queue_", "").split("_")
+        chapters = parts[0]
+        from_index = len(parts) > 1 and parts[1] == "1"
+        cmd = [sys.executable, str(scripts / "generate_outline_queue.py"), book, "--chapters", chapters]
+        if from_index:
+            cmd.append("--from-index")
+        return _spawn_script(cmd)
+
+    if action.startswith("build_ch_"):
+        ch = action.replace("build_ch_", "")
+        cmd = [sys.executable, str(scripts / "build_task_package.py"), book, "--chapter", ch]
+        return _spawn_script(cmd)
+
+    if action.startswith("write_chapter_"):
+        ch = action.replace("write_chapter_", "")
+        cmd = [sys.executable, str(scripts / "write_chapter.py"), book, "--chapter", ch]
+        return _spawn_script(cmd)
+
+    return {"error": f"Unknown action: {action}"}
+
+
+def run_concept_gate(data: dict) -> dict:
+    """Run concept_gate.py with inline YAML data."""
+    import tempfile, yaml
+    yaml_text = "\n".join(f"{k}: \"{v}\"" for k, v in data.items() if v)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, encoding="utf-8") as f:
+        f.write(yaml_text)
+        tmp_path = f.name
+    try:
+        result = _spawn_script([sys.executable, str(SCRIPTS_DIR / "concept_gate.py"), tmp_path, "--json"])
+        if result.get("output"):
+            try:
+                parsed = json.loads(result["output"])
+                return {"success": True, "data": parsed}
+            except json.JSONDecodeError:
+                return result
+        return result
+    finally:
+        try: os.unlink(tmp_path)
+        except: pass
+
+
+def run_init_project(books_root: Path, data: dict) -> dict:
+    """Run init_project.py to create a new book project."""
+    title = data.get("title", "").strip()
+    if not title:
+        return {"success": False, "error": "书名不能为空"}
+    book_id = data.get("book_id", "").strip() or None
+    book_dir = books_root / title
+    cmd = [sys.executable, str(SCRIPTS_DIR / "init_project.py"), str(book_dir), "--title", title]
+    if book_id:
+        cmd.extend(["--book-id", book_id])
+    result = _spawn_script(cmd)
+    if result.get("success"):
+        result["book_path"] = str(book_dir)
+        result["book_key"] = str(book_dir)
+        result["title"] = title
+    return result
+
+
+def run_post_writeback(book_dir: Path, body: str) -> dict:
+    """Run post_writeback.py."""
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        return {"success": False, "error": "无效 JSON"}
+    chapter = data.get("chapter", 0)
+    audit = data.get("audit", "PASS")
+    summary = data.get("summary", "")
+    cmd = [sys.executable, str(SCRIPTS_DIR / "post_writeback.py"), str(book_dir),
+           "--chapter", str(chapter), "--audit", audit, "--summary", summary, "--write", "--json"]
+    return _spawn_script(cmd)
+
+
+def save_chapter_queue_row(book_dir: Path, data: dict) -> dict:
+    """Update a single chapter's row in chapter_queue.md. Column-aware."""
     cq_path = book_dir / "director" / "chapter_queue.md"
     if not cq_path.exists():
         return {"success": False, "error": "chapter_queue.md 不存在"}
 
     ch_num = data.get("chapter")
+    if ch_num is None:
+        return {"success": False, "error": "缺少 chapter 参数"}
     goal = data.get("goal", "")
     premise_hit = data.get("premise_hit", "")
     forbidden = data.get("forbidden", "")
 
-    content = read(cq_path)
+    content = read_text(cq_path)
     lines = content.split("\n")
+
+    # Detect column layout from header
+    col_map = None
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s.startswith("|") and "---" not in s:
+            if i + 1 < len(lines) and "---" in lines[i + 1]:
+                col_map = _detect_queue_columns(split_table_cells(s))
+                break
+    if col_map is None:
+        col_map = _detect_queue_columns([])  # fallback to 6-column
+
     new_lines = []
     found = False
 
     for line in lines:
         s = line.strip()
-        if not s.startswith("|") or "---" in s or "Chapter" in s:
+        if not s.startswith("|") or "---" in s:
             new_lines.append(line)
             continue
-        cells = [c.strip() for c in s.strip("|").split("|")]
-        if len(cells) < 6:
-            new_lines.append(line)
-            continue
-        n = re.sub(r"\D", "", cells[0])
+        cells = split_table_cells(s)
+        n = re.sub(r"\D", "", cells[col_map["chapter"]])
         if not n.isdigit() or int(n) != ch_num:
             new_lines.append(line)
             continue
-        # Update this row
-        cells[2] = goal
-        cells[3] = premise_hit
-        cells[4] = forbidden
+        if col_map.get("goal", -1) >= 0:
+            cells[col_map["goal"]] = goal
+        if col_map.get("premise_must_hit", -1) >= 0:
+            cells[col_map["premise_must_hit"]] = premise_hit
+        if col_map.get("forbidden", -1) >= 0:
+            cells[col_map["forbidden"]] = forbidden
         new_lines.append("| " + " | ".join(cells) + " |")
         found = True
 
     if not found:
         return {"success": False, "error": f"未找到第{ch_num}章"}
 
-    cq_path.write_text("\n".join(new_lines), encoding="utf-8")
+    write_text(cq_path, "\n".join(new_lines))
     return {"success": True, "chapter": ch_num}
 
+
+def scan_books(books_root: Path) -> list[dict]:
+    """Scan for book projects (directories containing director/director_state.json5)."""
+    books = []
+    if not books_root or not books_root.exists():
+        return books
+    for entry in sorted(books_root.iterdir()):
+        if not entry.is_dir():
+            continue
+        state_file = entry / "director" / "director_state.json5"
+        if state_file.exists():
+            state = parse_json5(read_text(state_file))
+            books.append({"key": str(entry), "title": state.get("title", entry.name), "path": str(entry)})
+    return books
+
+
+MIME_TYPES = {
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+}
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
-    book_dir: Path = None  # Set by the server
+    book_dir: Path = None
+    books_root: Path = None
+    html_template: str = ""
 
     def log_message(self, format, *args):
-        pass  # Quiet
+        pass
+
+    def _serve(self, code: int, content_type: str, body: bytes):
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_json(self, data):
+        raw = json.dumps(data, ensure_ascii=True, indent=2)
+        self._serve(200, "application/json; charset=utf-8", raw.encode("utf-8"))
+
+    def _resolve_book(self, qs) -> Path | None:
+        key = qs.get("book", [None])[0]
+        if key:
+            candidate = Path(key)
+            if (candidate / "director" / "director_state.json5").exists():
+                return candidate
+            return None
+        if self.books_root:
+            books = scan_books(self.books_root)
+            if books:
+                return Path(books[0]["path"])
+        return self.book_dir
 
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        qs = parse_qs(parsed.query)
 
         if path == "/" or path == "/index.html":
-            self._serve_html()
+            self._serve(200, "text/html; charset=utf-8",
+                        self.html_template.encode("utf-8"))
+
+        elif path.startswith("/static/"):
+            filename = path.replace("/static/", "", 1)
+            content = _load_static(filename)
+            ext = os.path.splitext(filename)[1]
+            mime = MIME_TYPES.get(ext, "application/octet-stream")
+            self._serve(200, mime, content)
+
+        elif path == "/api/books":
+            self._serve_json(scan_books(self.books_root) if self.books_root else [])
+
         elif path == "/api/state":
-            self._serve_json(get_project_state(self.book_dir))
+            target = self._resolve_book(qs)
+            if target:
+                self._serve_json(_get_state_cached(target))
+            else:
+                self._serve_json({"error": "未找到书籍项目", "title": "无项目"})
+
+        elif path == "/api/provider_presets":
+            presets = _load_presets()
+            self._serve_json({"presets": presets})
+
+        elif path == "/api/outline/full":
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"error": "未找到书籍项目"})
+                return
+            vm_path = target / "director" / "volume_map.md"
+            cq_path = target / "director" / "chapter_queue.md"
+            volumes_raw = parse_volume_map(vm_path) if vm_path.exists() else []
+            volumes = parse_volume_map(vm_path, include_events=True) if vm_path.exists() else []
+            # Detect active volume
+            state_path = target / "director" / "director_state.json5"
+            active_vol = 1
+            if state_path.exists():
+                state = parse_json5(read_text(state_path))
+                active_vol = state.get("activeVolume", 1)
+            # Mark active volume
+            for v in volumes:
+                v["is_active"] = v["volume"] == active_vol
+            # Chapters
+            chapters = parse_chapter_queue(cq_path) if cq_path.exists() else []
+            # Merge mtime and title from chapter files
+            for ch in chapters:
+                for ch_dir_name in ("正文", "chapters", "story/chapters"):
+                    ch_dir = target / ch_dir_name
+                    if ch_dir.exists():
+                        for pat in [f"第*{str(ch['chapter']).zfill(3)}*章*.md",
+                                    f"第*{str(ch['chapter'])}*章*.md",
+                                    f"第0*{str(ch['chapter'])}章*.md"]:
+                            candidates = sorted(ch_dir.glob(pat))
+                            if candidates:
+                                f = candidates[0]
+                                ch["mtime"] = datetime.datetime.fromtimestamp(
+                                    f.stat().st_mtime).strftime("%m-%d %H:%M")
+                                # Extract title from filename
+                                rest = f.name.split("章", 1)[-1] if "章" in f.name else ""
+                                title = rest.lstrip("-_. ").replace(".md", "").strip()
+                                if title and not ch.get("title_hint"):
+                                    ch["title_hint"] = title
+                                break
+                if "mtime" not in ch:
+                    ch["mtime"] = ""
+                # Map chapter to volume
+                for v in volumes_raw:
+                    if v["start"] <= ch["chapter"] <= v["end"]:
+                        ch["volume_num"] = v["volume"]
+                        break
+            self._serve_json({
+                "volumes": volumes,
+                "active_volume": active_vol,
+                "chapters": chapters,
+                "total_chapters_planned": sum(v["chapters"] for v in volumes_raw),
+            })
+
+        elif path == "/api/chapter_content":
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"success": False, "error": "未找到书籍项目"})
+                return
+            ch_str = qs.get("chapter", [None])[0]
+            if not ch_str:
+                self._serve_json({"success": False, "error": "缺少 chapter 参数"})
+                return
+            ch_file = _find_chapter_file(target, ch_str)
+            if not ch_file:
+                self._serve_json({"success": False, "error": f"未找到第{ch_str}章的正文文件"})
+                return
+            content = read_text(Path(ch_file))
+            body = content
+            title_match = re.match(r"^#\s*(.+)", body)
+            title = title_match.group(1) if title_match else f"第{ch_str}章"
+            if title_match:
+                body = body[title_match.end():].lstrip()
+            char_count = len(strip_markdown(body))
+            para_count = len([p for p in body.split("\n\n") if p.strip()])
+            self._serve_json({
+                "success": True,
+                "chapter": int(ch_str),
+                "title": title,
+                "content": content,
+                "body": body,
+                "char_count": char_count,
+                "para_count": para_count,
+                "file": str(Path(ch_file).relative_to(target)),
+            })
+
+        elif path == "/api/file":
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"success": False, "error": "未找到书籍项目"})
+                return
+            rel_path = qs.get("path", [""])[0]
+            if not rel_path or ".." in rel_path:
+                self._serve_json({"success": False, "error": "无效路径"})
+                return
+            file_path = (target / rel_path).resolve()
+            if not str(file_path).startswith(str(target.resolve())):
+                self._serve_json({"success": False, "error": "路径越界"})
+                return
+            if not file_path.exists():
+                self._serve_json({"success": False, "error": "文件不存在"})
+                return
+            self._serve_json({"success": True, "content": read_text(file_path), "path": rel_path})
+
+        elif path == "/api/write_flow":
+            # Job polling: GET /api/write_flow?job=<job_id>
+            job_id = qs.get("job", [None])[0]
+            if job_id:
+                with _write_jobs_lock:
+                    job = _write_jobs.get(job_id)
+                if job:
+                    self._serve_json(job)
+                else:
+                    self._serve_json({"status": "not_found", "error": "任务不存在"})
+                return
+
+            # Start new write flow: GET /api/write_flow?book=...&chapter=N
+            chapter_str = qs.get("chapter", [None])[0]
+            if not chapter_str:
+                self._serve_json({"success": False, "error": "缺少 chapter 参数"})
+                return
+            try:
+                chapter = int(chapter_str)
+            except ValueError:
+                self._serve_json({"success": False, "error": "chapter 必须是数字"})
+                return
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"success": False, "error": "未找到书籍项目"})
+                return
+
+            job_id = uuid.uuid4().hex[:12]
+            with _write_jobs_lock:
+                _write_jobs[job_id] = {
+                    "status": "running",
+                    "job_id": job_id,
+                    "chapter": chapter,
+                    "step_results": [],
+                    "queue_remaining": -1,
+                    "queue_extended": False,
+                    "started_at": datetime.datetime.now().isoformat(),
+                }
+
+            def _bg_run():
+                try:
+                    result = _do_write_flow(target, chapter)
+                    with _write_jobs_lock:
+                        _write_jobs[job_id].update(result)
+                        _write_jobs[job_id]["status"] = "done" if result.get("success") else "error"
+                        _write_jobs[job_id]["finished_at"] = datetime.datetime.now().isoformat()
+                except Exception as e:
+                    with _write_jobs_lock:
+                        _write_jobs[job_id]["status"] = "error"
+                        _write_jobs[job_id]["error"] = str(e)
+                        _write_jobs[job_id]["finished_at"] = datetime.datetime.now().isoformat()
+
+                # Clean up old jobs (keep latest 20)
+                with _write_jobs_lock:
+                    keys = list(_write_jobs.keys())
+                    if len(keys) > 20:
+                        for old_key in keys[:-20]:
+                            _write_jobs.pop(old_key, None)
+
+            threading.Thread(target=_bg_run, daemon=True).start()
+            self._serve_json({"job_id": job_id, "status": "started", "chapter": chapter})
+
+        elif path == "/api/batch_write":
+            # Job polling: GET /api/batch_write?job=<job_id>
+            job_id = qs.get("job", [None])[0]
+            if job_id:
+                with _batch_jobs_lock:
+                    job = _batch_jobs.get(job_id)
+                if job:
+                    self._serve_json(job)
+                else:
+                    self._serve_json({"status": "not_found", "error": "任务不存在"})
+                return
+            self._serve_json({"success": False, "error": "batch_write 需要 POST 启动或 GET ?job= 轮询"})
+            return
+
         elif path.startswith("/api/action/"):
             action = path.split("/")[-1]
-            self._serve_json(run_action(self.book_dir, action))
+            target = self._resolve_book(qs)
+            if target:
+                action_map = {
+                    "doctor": [sys.executable, str(SCRIPTS_DIR / "director_doctor.py"), target],
+                    "review": [sys.executable, str(SCRIPTS_DIR / "outline_gate_review.py"), target],
+                    "causal": [sys.executable, str(SCRIPTS_DIR / "outline_causal_check.py"), target],
+                    "iterate": [sys.executable, str(SCRIPTS_DIR / "outline_iterate.py"), target, "--no-llm", "--max-rounds", "2"],
+                }
+                if action in action_map:
+                    self._serve_json(_spawn_script(action_map[action]))
+                elif action.startswith("review_parallel_"):
+                    vol_str = action.replace("review_parallel_", "")
+                    result = _run_parallel_review(target, vol_str)
+                    self._serve_json(result)
+                elif action.startswith("repair_"):
+                    ch_str = action.replace("repair_", "")
+                    result = _spawn_script(
+                        [sys.executable, str(SCRIPTS_DIR / "repair_plan.py"), str(target),
+                         "--chapter", ch_str], timeout=120)
+                    self._serve_json(result)
+                else:
+                    self._serve_json(run_action(target, action))
+            else:
+                self._serve_json({"error": "未找到书籍项目"})
+
         else:
             self.send_error(404)
 
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        qs = parse_qs(parsed.query)
 
-        if path == "/api/save_review":
+        if path == "/api/save_chapter":
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"success": False, "error": "未找到书籍项目"})
+                return
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length).decode("utf-8")
             try:
                 data = json.loads(body)
-                result = save_review_history(self.book_dir, data)
+                result = save_chapter_queue_row(target, data)
                 self._serve_json(result)
             except Exception as e:
                 self._serve_json({"success": False, "error": str(e)})
-        elif path == "/api/save_chapter":
+
+        elif path == "/api/concept_gate":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length).decode("utf-8")
             try:
                 data = json.loads(body)
-                result = save_chapter_queue(self.book_dir, data)
+                result = run_concept_gate(data)
                 self._serve_json(result)
             except Exception as e:
                 self._serve_json({"success": False, "error": str(e)})
+
+        elif path == "/api/scan_concepts":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                platform = data.get("platform", "番茄")
+                genre_pref = data.get("genre_preference", "")
+                result = run_scan_concepts(platform, genre_pref)
+                self._serve_json(result)
+            except Exception as e:
+                self._serve_json({"success": False, "error": str(e)})
+
+        elif path == "/api/init_project":
+            target_root = self.books_root or (SKILL_ROOT / "books")
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                result = run_init_project(target_root, data)
+                self._serve_json(result)
+            except Exception as e:
+                self._serve_json({"success": False, "error": str(e)})
+
+        elif path == "/api/file":
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"success": False, "error": "未找到书籍项目"})
+                return
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                rel_path = data.get("path", "")
+                if not rel_path or ".." in rel_path:
+                    self._serve_json({"success": False, "error": "无效路径"})
+                    return
+                file_path = (target / rel_path).resolve()
+                if not str(file_path).startswith(str(target.resolve())):
+                    self._serve_json({"success": False, "error": "路径越界"})
+                    return
+                if not file_path.exists():
+                    self._serve_json({"success": False, "error": "文件不存在"})
+                    return
+                write_text(file_path, data.get("content", ""))
+                self._serve_json({"success": True})
+            except Exception as e:
+                self._serve_json({"success": False, "error": str(e)})
+
+        elif path == "/api/outline/save_event":
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"success": False, "error": "未找到书籍项目"})
+                return
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                volume_num = data.get("volume", 1)
+                events = data.get("events", [])
+                vm_path = target / "director" / "volume_map.md"
+                if not vm_path.exists():
+                    self._serve_json({"success": False, "error": "volume_map.md 不存在"})
+                    return
+                full_text = read_text(vm_path)
+                section = _find_volume_section(full_text, volume_num)
+                if not section:
+                    self._serve_json({"success": False, "error": f"未找到第{volume_num}卷详情"})
+                    return
+                new_section = replace_events_in_section(section, events, volume_num)
+                new_full = full_text.replace(section, new_section)
+                write_text(vm_path, new_full)
+                self._serve_json({"success": True, "volume": volume_num})
+            except Exception as e:
+                self._serve_json({"success": False, "error": str(e)})
+
+        elif path == "/api/outline/add_event":
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"success": False, "error": "未找到书籍项目"})
+                return
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                volume_num = data.get("volume", 1)
+                new_event = data.get("event", {})
+                vm_path = target / "director" / "volume_map.md"
+                if not vm_path.exists():
+                    self._serve_json({"success": False, "error": "volume_map.md 不存在"})
+                    return
+                full_text = read_text(vm_path)
+                # Find the section, parse existing events, append new one, rebuild
+                section = _find_volume_section(full_text, volume_num)
+                if not section:
+                    self._serve_json({"success": False, "error": f"未找到第{volume_num}卷详情"})
+                    return
+                existing = parse_volume_core_events(section, volume_num)
+                existing.append({
+                    "range_start": new_event.get("range_start", 1),
+                    "range_end": new_event.get("range_end", 1),
+                    "label": new_event.get("label", "新事件块"),
+                    "status": new_event.get("status", "planned"),
+                    "events": new_event.get("events", []),
+                })
+                new_section = replace_events_in_section(section, existing, volume_num)
+                new_full = full_text.replace(section, new_section)
+                write_text(vm_path, new_full)
+                self._serve_json({"success": True, "volume": volume_num})
+            except Exception as e:
+                self._serve_json({"success": False, "error": str(e)})
+
+        elif path == "/api/generate_queue":
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"success": False, "error": "未找到书籍项目"})
+                return
+            chapters = qs.get("chapters", ["20"])[0]
+            from_index = qs.get("from_index", ["0"])[0] == "1"
+            result = run_action(target, f"generate_queue_{chapters}_{'1' if from_index else '0'}")
+            self._serve_json(result)
+
+        elif path == "/api/write_chapter":
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"success": False, "error": "未找到书籍项目"})
+                return
+            chapter = qs.get("chapter", ["0"])[0]
+            result = run_action(target, f"write_chapter_{chapter}")
+            self._serve_json(result)
+
+        elif path == "/api/review_chapter_post":
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"success": False, "error": "未找到书籍项目"})
+                return
+            chapter = qs.get("chapter", ["0"])[0]
+            result = run_action(target, f"review_ch_{chapter}")
+            self._serve_json(result)
+
+        elif path == "/api/post_writeback":
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"success": False, "error": "未找到书籍项目"})
+                return
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            result = run_post_writeback(target, body)
+            self._serve_json(result)
+
+        elif path == "/api/verify_key":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                api_key = (data.get("api_key", "") or "").strip()
+                base_url = (data.get("base_url", "") or "").strip()
+                if not api_key:
+                    self._serve_json({"success": False, "error": "API Key 不能为空"})
+                    return
+                result = _verify_api_key(api_key, base_url=base_url)
+                self._serve_json(result)
+            except Exception as e:
+                self._serve_json({"success": False, "error": str(e)})
+
+        elif path == "/api/save_key":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                api_key = (data.get("api_key", "") or "").strip()
+                provider = data.get("provider", "custom")
+                model = data.get("model", "")
+                base_url = (data.get("base_url", "") or "").strip()
+                if not api_key:
+                    self._serve_json({"success": False, "error": "API Key 不能为空"})
+                    return
+
+                config_local = SKILL_ROOT / "config.local.yaml"
+                try:
+                    import yaml
+                    existing: dict = {}
+                    if config_local.exists():
+                        existing = yaml.safe_load(config_local.read_text(encoding="utf-8")) or {}
+                except Exception:
+                    existing = {}
+
+                existing.setdefault("api_keys", {})
+                existing["api_keys"][provider] = {"key": api_key}
+                if base_url:
+                    existing["api_keys"][provider]["base_url"] = base_url
+                if model:
+                    existing["api_keys"][provider]["default_model"] = model
+
+                # Also save to providers section for llm.py compatibility
+                existing.setdefault("providers", {})
+                existing["providers"].setdefault(provider, {})
+                existing["providers"][provider]["base_url"] = base_url or f"https://api.{provider}.com/v1"
+                if model:
+                    existing["providers"][provider]["default_model"] = model
+
+                import yaml
+                config_local.write_text(yaml.dump(existing, allow_unicode=True, default_flow_style=False),
+                                        encoding="utf-8")
+                # Inject for current process
+                if provider == "deepseek":
+                    os.environ["DEEPSEEK_API_KEY"] = api_key
+                elif base_url:
+                    os.environ[f"{provider.upper()}_API_KEY"] = api_key
+                    os.environ[f"{provider.upper()}_BASE_URL"] = base_url
+                self._serve_json({"success": True, "message": f"已保存到 {config_local.name}", "provider": provider, "model": model or "默认"})
+            except Exception as e:
+                self._serve_json({"success": False, "error": f"保存失败: {str(e)}"})
+
+        elif path == "/api/batch_write":
+            target = self._resolve_book(qs)
+            if not target:
+                self._serve_json({"success": False, "error": "未找到书籍项目"})
+                return
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            try:
+                data = json.loads(body)
+                chapter_start = data.get("chapter_start", 0)
+                count = data.get("count", 1)
+                if not chapter_start or count < 1:
+                    self._serve_json({"success": False, "error": "chapter_start 和 count 参数不正确"})
+                    return
+                job_id = _start_batch_write(target, chapter_start, count)
+                self._serve_json({"job_id": job_id, "status": "started", "chapter_start": chapter_start, "count": count})
+            except Exception as e:
+                self._serve_json({"success": False, "error": str(e)})
+
         else:
             self.send_error(404)
-
-    def _serve_html(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(HTML_TEMPLATE.encode("utf-8"))
-
-    def _serve_json(self, data):
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
-
-
-def parse_audit_log(audit_log_path: Path) -> list[dict]:
-    """Parse audit_log.md table rows into a list of dicts."""
-    if not audit_log_path.exists():
-        return []
-    text = read(audit_log_path)
-    rows = []
-    for line in text.splitlines():
-        s = line.strip()
-        if not s.startswith("|") or "---" in s or "Time" in s:
-            continue
-        cells = [c.strip() for c in s.strip("|").split("|")]
-        if len(cells) >= 5:
-            rows.append({
-                "time": cells[0],
-                "module": cells[1],
-                "object": cells[2],
-                "result": cells[3].upper(),
-                "summary": cells[4],
-                "next": cells[5] if len(cells) > 5 else "",
-            })
-    return rows
-
-
-def run_cli_mode(args) -> int:
-    """Render a colored terminal dashboard panel."""
-    # Ensure UTF-8 output on Windows
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-    book_dir = Path(args.book_dir).resolve() if args.book_dir else None
-
-    # Try auto-detect
-    if not book_dir:
-        cwd = Path.cwd()
-        if (cwd / "director" / "director_state.json5").exists():
-            book_dir = cwd
-        else:
-            print(f"{RED}用法: python dashboard_server.py <book_dir> --mode cli{RESET}")
-            return 1
-
-    if not (book_dir / "director" / "director_state.json5").exists():
-        print(f"{RED}错误: {book_dir} 中未找到 director/director_state.json5{RESET}")
-        return 1
-
-    refresh_interval = args.refresh or 0
-
-    while True:
-        # Clear screen
-        os.system("cls" if os.name == "nt" else "clear")
-
-        state = get_project_state(book_dir)
-        audit_log_path = book_dir / "director" / "audit_log.md"
-        audit_entries = parse_audit_log(audit_log_path)
-
-        # Audit status block
-        audit_status = (state.get("last_audit") or {}).get("status", "NONE")
-        status_color = {"PASS": GREEN, "WARN": YELLOW, "FAIL": RED}.get(audit_status, RESET)
-        status_icon = {"PASS": f"{GREEN}[OK]{RESET}", "WARN": f"{YELLOW}[!!]{RESET}",
-                       "FAIL": f"{RED}[XX]{RESET}", "NONE": f"{DIM}[--]{RESET}"}.get(audit_status, "[--]")
-        status_block = {"PASS": "████", "WARN": "▓▓▓▓", "FAIL": "░░░░", "NONE": "····"}.get(audit_status, "····")
-
-        # ═══ Top: Project header ═══
-        title = state.get("title", book_dir.name)
-        print(f"{BOLD}{CYAN}╔{'═' * 58}╗{RESET}")
-        print(f"{BOLD}{CYAN}║{RESET} {BOLD}项目:{RESET} 《{title}》")
-        print(f"{BOLD}{CYAN}║{RESET} {BOLD}状态:{RESET} {status_icon} {status_color}{audit_status} {status_color}{status_block}{RESET}")
-        if state.get("premise_summary"):
-            prem_line = state["premise_summary"][:48]
-            print(f"{BOLD}{CYAN}║{RESET} {BOLD}命题:{RESET} {DIM}{prem_line}{RESET}")
-        blockers = state.get("blockers", [])
-        if blockers:
-            print(f"{BOLD}{CYAN}║{RESET} {BOLD}阻塞:{RESET} {RED}{len(blockers)} 项{RESET}  {', '.join(blockers[:2])}")
-        print(f"{BOLD}{CYAN}╚{'═' * 58}╝{RESET}")
-
-        # ═══ Middle: Chapter progress ═══
-        print(f"\n{CYAN}📊 章节进度{RESET}")
-        total = state.get("total_chapters_planned", 0)
-        written = state.get("total_chapters_written", 0)
-        ratio = written / max(total, 1)
-        bar_width = 40
-        filled = int(bar_width * ratio)
-        bar = "█" * filled + "░" * (bar_width - filled)
-        pct_bar = f"{bar} {written}/{total} ({ratio * 100:.1f}%)"
-        print(f"  {pct_bar}")
-
-        # Word count + review stats
-        total_chars = state.get("total_chars", 0)
-        chapters_list = state.get("chapters", [])
-        pass_n = sum(1 for c in chapters_list if c.get("review_verdict") == "PASS")
-        warn_n = sum(1 for c in chapters_list if c.get("review_verdict") == "WARN")
-        fail_n = sum(1 for c in chapters_list if c.get("review_verdict") == "FAIL")
-        total_reviewed = pass_n + warn_n + fail_n
-        print(f"  总字数: {total_chars / 10000:.1f}万字 | 已审查: {total_reviewed}章 "
-              f"({GREEN}{pass_n}P{RESET} {YELLOW}{warn_n}W{RESET} {RED}{fail_n}F{RESET})")
-
-        # Chapter status breakdown (quick grid)
-        if chapters_list:
-            cols = 10
-            ch_status_grid = []
-            for ch in chapters_list:
-                ch_status_grid.append(ch)
-            # Print a compact status line
-            status_chars = []
-            for ch in chapters_list[:80]:
-                s = (ch.get("status") or "").upper()
-                if s in ("PASS", "WRITTEN"):
-                    status_chars.append(f"{GREEN}●{RESET}")
-                elif s == "WARN":
-                    status_chars.append(f"{YELLOW}●{RESET}")
-                elif s == "FAIL":
-                    status_chars.append(f"{RED}●{RESET}")
-                else:
-                    status_chars.append(f"{DIM}○{RESET}")
-            # Layout in rows of 20
-            row_width = 20
-            for row_start in range(0, min(len(status_chars), 80), row_width):
-                row_chars = status_chars[row_start:row_start + row_width]
-                ch_start = row_start + 1
-                ch_end = min(row_start + row_width, len(status_chars))
-                print(f"  ch{ch_start:02d}-{ch_end:02d}: {''.join(row_chars)}")
-
-        # ═══ Bottom: Last 5 audit records ═══
-        print(f"\n{CYAN}📋 最近审计记录 (共 {len(audit_entries)} 条){RESET}")
-        if audit_entries:
-            recent = audit_entries[-5:]
-            # Header
-            print(f"  {DIM}{'时间':<20} {'模块':<16} {'对象':<14} {'结果':<6} {'摘要'}{RESET}")
-            for entry in recent:
-                result_color = {"PASS": GREEN, "WARN": YELLOW, "FAIL": RED}.get(entry["result"], RESET)
-                time_str = entry["time"][:19]
-                module_str = entry["module"][:15]
-                obj_str = entry["object"][:13]
-                summary_str = entry["summary"][:40]
-                print(f"  {DIM}{time_str:<20}{RESET} {module_str:<16} {obj_str:<14} "
-                      f"{result_color}{entry['result']:<6}{RESET} {summary_str}")
-        else:
-            print(f"  {DIM}(暂无审计记录){RESET}")
-
-        # ═══ Footer ═══
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if refresh_interval > 0:
-            print(f"\n{DIM}  刷新间隔: {refresh_interval}s | 更新时间: {now_str} | Ctrl+C 退出{RESET}")
-            try:
-                time.sleep(refresh_interval)
-            except KeyboardInterrupt:
-                print(f"\n{RESET}  已停止")
-                return 0
-        else:
-            print(f"\n{DIM}  更新时间: {now_str}{RESET}")
-            return 0
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="webnovel-director Dashboard")
-    ap.add_argument("book_dir", nargs="?", help="小说项目路径")
+    ap.add_argument("book_dir", nargs="?", help="小说项目路径（单书模式）")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
-    ap.add_argument("--mode", choices=["server", "cli"], default="server",
-                    help="运行模式: server (Web仪表盘) 或 cli (终端面板)")
-    ap.add_argument("--refresh", "-r", type=int, default=0, metavar="N",
-                    help="CLI模式自动刷新间隔(秒), 0=单次输出")
+    ap.add_argument("--books-root", type=str, default=None,
+                    help="多书根目录（默认 <项目根>/books）")
     args = ap.parse_args()
 
-    if args.mode == "cli":
-        return run_cli_mode(args)
+    books_root = None
+    if args.books_root:
+        books_root = Path(args.books_root).resolve()
+    else:
+        default_root = SKILL_ROOT / "books"
+        if default_root.exists():
+            books_root = default_root
 
-    # ── Server mode ──
+    if books_root:
+        books = scan_books(books_root)
+        if books:
+            args.book_dir = books[0]["path"]
+            print(f"  扫描到 {len(books)} 本书:")
+            for b in books:
+                print(f"    {b['title']}")
+
     if not args.book_dir:
-        # Try to find a project in current dir
         cwd = Path.cwd()
         if (cwd / "director" / "director_state.json5").exists():
             args.book_dir = str(cwd)
         else:
             print("用法: python dashboard_server.py <book_dir> [--port 8765]")
-            print("  或: python dashboard_server.py <book_dir> --mode cli [--refresh N]")
             print("或在含有 director/director_state.json5 的项目目录下运行")
             return 1
 
@@ -1203,6 +1497,9 @@ def main() -> int:
         return 1
 
     DashboardHandler.book_dir = book_dir
+    DashboardHandler.books_root = books_root
+    DashboardHandler.html_template = _load_html()
+
     server = HTTPServer(("127.0.0.1", args.port), DashboardHandler)
 
     url = f"http://127.0.0.1:{args.port}"

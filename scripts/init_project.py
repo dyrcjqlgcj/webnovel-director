@@ -8,10 +8,15 @@ Creates director/ and truth/ files from templates without overwriting existing
 files unless --force is supplied.
 """
 from __future__ import annotations
-from pathlib import Path
-import argparse, datetime, re, sys
 
-SKILL_ROOT = Path(__file__).resolve().parents[1]
+import argparse
+import sys
+from pathlib import Path
+
+_skill_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_skill_root))
+from lib.common import SKILL_ROOT, now_iso, read_text, slugify, write_text  # noqa: E402
+
 TEMPLATE_DIR = SKILL_ROOT / "templates"
 
 FILES = {
@@ -24,23 +29,19 @@ FILES = {
     "truth/resource_ledger.md": "resource_ledger.md",
     "truth/particle_ledger.md": "particle_ledger.md",
     "truth/relationship_graph.yaml": "relationship_graph.yaml",
-    "truth/relationship_graph.yaml": "relationship_graph.yaml",
     "truth/pending_hooks.md": "pending_hooks.md",
     "story/outline/volume_map.md": "volume_map.md",
 }
 
-def slug(s: str) -> str:
-    s = re.sub(r"\s+", "-", s.strip().lower())
-    s = re.sub(r"[^\w\-\u4e00-\u9fff]", "", s)
-    return s or "book"
 
 def render(text: str, title: str, book_id: str) -> str:
-    now = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+    now = now_iso()
     return (text
         .replace("{{TITLE}}", title)
         .replace("{{BOOK_ID}}", book_id)
         .replace("{{UPDATED_AT}}", now)
         .replace("{{PREMISE_PROMISE}}", "待填写：这本书反复兑现给读者的核心承诺。"))
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -51,7 +52,7 @@ def main() -> int:
     args = ap.parse_args()
 
     book = Path(args.book_dir).resolve()
-    book_id = args.book_id or slug(args.title)
+    book_id = args.book_id or slugify(args.title)
     created, skipped = [], []
     book.mkdir(parents=True, exist_ok=True)
 
@@ -62,7 +63,7 @@ def main() -> int:
             continue
         dst.parent.mkdir(parents=True, exist_ok=True)
         src = TEMPLATE_DIR / tmpl
-        dst.write_text(render(src.read_text(encoding="utf-8"), args.title, book_id), encoding="utf-8")
+        write_text(dst, render(read_text(src), args.title, book_id))
         created.append(rel)
 
     print("结论：PASS")
@@ -76,7 +77,6 @@ def main() -> int:
     print("下一步：进入 outline-gate")
     return 0
 
+
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
