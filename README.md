@@ -93,10 +93,10 @@ api_keys:
 
 ```bash
 # 为已有项目启动仪表盘
-python scripts/dashboard_server.py "books/领地战争-每日一格" --port 8765
+python scripts/dashboard_server.py "books/booksname" --port 8765
 
 # 或通过 wd CLI
-python wd.py dashboard "books/领地战争-每日一格"
+python wd.py dashboard "books/booksname"
 ```
 
 打开浏览器访问 **http://127.0.0.1:8765**
